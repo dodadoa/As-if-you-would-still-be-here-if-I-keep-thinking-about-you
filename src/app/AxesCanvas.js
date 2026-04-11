@@ -130,6 +130,62 @@ function drawCross(p, cx, cy, rot) {
   });
 }
 
+// ── line pulses ────────────────────────────────────────────────────────────────
+const PULSE_SPEED = 200;
+const PULSE_DURATION = 1100;
+
+// Store the signed parametric distance (t0) along the hit axis rather than
+// a fixed world position. Each frame we recompute using the CURRENT angle,
+// so the pulse always rides the rotating line.
+function addPulse(pulses, objX, objY, mx, my, angle) {
+  const dx = objX - mx;
+  const dy = objY - my;
+  // perpendicular distance to each axis — the smaller one is the one that crossed
+  const perpAxis1 = Math.abs(dx * Math.sin(angle) - dy * Math.cos(angle));
+  const perpAxis2 = Math.abs(dx * Math.cos(angle) + dy * Math.sin(angle));
+  const axisOffset = perpAxis1 < perpAxis2 ? 0 : Math.PI / 2;
+  const cosA = Math.cos(angle + axisOffset);
+  const sinA = Math.sin(angle + axisOffset);
+  // signed distance from origin along the chosen axis
+  const t0 = dx * cosA + dy * sinA;
+  pulses.push({ t0, axisOffset, birthTime: performance.now() });
+}
+
+function drawLinePulses(p, pulses, angle, smoothX, smoothY) {
+  const now = performance.now();
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    const pulse = pulses[i];
+    const elapsed = (now - pulse.birthTime) / 1000;
+    if (elapsed > PULSE_DURATION / 1000) { pulses.splice(i, 1); continue; }
+
+    const progress = elapsed / (PULSE_DURATION / 1000);
+    const alpha = (1 - progress) * 255;
+    const dist = elapsed * PULSE_SPEED;
+    // recompute direction from CURRENT angle so pulse follows the rotating line
+    const currentAngle = angle + pulse.axisOffset;
+    const cosA = Math.cos(currentAngle);
+    const sinA = Math.sin(currentAngle);
+
+    [1, -1].forEach((dir) => {
+      const t = pulse.t0 + dir * dist;
+      const px = smoothX + t * cosA;
+      const py = smoothY + t * sinA;
+      if (px < 0 || px > p.width || py < 0 || py > p.height) return;
+
+      const half = p.lerp(10, 3, progress);
+      p.push();
+      p.noFill();
+      p.stroke(255, alpha);
+      p.strokeWeight(3.5);
+      p.line(px - cosA * half, py - sinA * half, px + cosA * half, py + sinA * half);
+      p.stroke(0, alpha * 0.5);
+      p.strokeWeight(0.8);
+      p.line(px - cosA * half, py - sinA * half, px + cosA * half, py + sinA * half);
+      p.pop();
+    });
+  }
+}
+
 // ── circles ────────────────────────────────────────────────────────────────────
 function makeCircle(p) {
   const r = p.random(3, 9);
@@ -147,7 +203,7 @@ function makeCircle(p) {
   };
 }
 
-function updateAndDrawCircles(p, circles, angle, mx, my) {
+function updateAndDrawCircles(p, circles, angle, mx, my, pulses) {
   const A = angle;
   const now = performance.now();
 
@@ -174,6 +230,7 @@ function updateAndDrawCircles(p, circles, angle, mx, my) {
         playCircPing(c.y, p.height);
         c.lastTrigger = now;
         c.hitTime = now;
+        addPulse(pulses, c.x, c.y, mx, my, A);
       }
     }
     c.prevD1 = d1;
@@ -221,7 +278,7 @@ function updateAndDrawCircles(p, circles, angle, mx, my) {
 }
 
 // ── text blocks ────────────────────────────────────────────────────────────────
-function processBlocks(p, blocks, activeBlock, angle, mx, my) {
+function processBlocks(p, blocks, activeBlock, angle, mx, my, pulses) {
   const A = angle;
   const now = performance.now();
 
@@ -248,6 +305,7 @@ function processBlocks(p, blocks, activeBlock, angle, mx, my) {
           playCharPing(py, p.height);
           char.lastTrigger = now;
           char.hitTime = now;
+          addPulse(pulses, block.x + i * CHAR_W + CHAR_W / 2, block.y + char.dy, mx, my, A);
         }
       }
       char.prevD1 = d1;
@@ -296,7 +354,7 @@ function spawnSymbol(p) {
   };
 }
 
-function processSymbols(p, symbols, angle, mx, my) {
+function processSymbols(p, symbols, angle, mx, my, pulses) {
   const A = angle;
   const now = performance.now();
 
@@ -318,6 +376,7 @@ function processSymbols(p, symbols, angle, mx, my) {
         playSymPing(sym.y, p.height);
         sym.lastTrigger = now;
         sym.hitTime = now;
+        addPulse(pulses, sym.x, sym.y, mx, my, A);
       }
     }
     sym.prevD1 = d1;
@@ -360,6 +419,10 @@ export default function AxesCanvas() {
         let lastSymbolTime = -Infinity;
         let smoothX = 0;
         let smoothY = 0;
+        let linePulses = [];
+        let showInfo = false;
+        let infoT = 0;
+        let mode = 'default'; // 'default' | 'typing'
 
         p.setup = () => {
           p.createCanvas(p.windowWidth, p.windowHeight);
@@ -392,15 +455,56 @@ export default function AxesCanvas() {
 
           p.background(255);
 
-          updateAndDrawCircles(p, circles, angle, smoothX, smoothY);
-          processSymbols(p, symbols, angle, smoothX, smoothY);
-          processBlocks(p, blocks, activeBlock, angle, smoothX, smoothY);
+          updateAndDrawCircles(p, circles, angle, smoothX, smoothY, linePulses);
+          processSymbols(p, symbols, angle, smoothX, smoothY, linePulses);
+          processBlocks(p, blocks, activeBlock, angle, smoothX, smoothY, linePulses);
           drawCross(p, smoothX, smoothY, angle);
+          drawLinePulses(p, linePulses, angle, smoothX, smoothY);
 
-          // centre dot
-          p.noStroke();
-          p.fill(0);
-          p.circle(smoothX, smoothY, 6);
+          // info overlay — animates in/out on spacebar (default mode only)
+          infoT = p.lerp(infoT, showInfo ? 1 : 0, 0.1);
+
+          if (infoT > 0.01) {
+            const R = infoT * 75; // 2.5x the 30px reference
+            p.push();
+            p.fill(255, infoT * 255);
+            p.stroke(0, infoT * 220);
+            p.strokeWeight(1.5);
+            p.circle(smoothX, smoothY, R * 2);
+
+            if (infoT > 0.6) {
+              const tA = ((infoT - 0.6) / 0.4) * 255;
+              const rotMode = spinning || spinSpeed > 0 ? 'spinning' : 'still';
+              const speedPct = Math.round((spinSpeed / TARGET_SPEED) * 100);
+
+              p.fill(0, tA);
+              p.noStroke();
+              p.textAlign(p.CENTER, p.CENTER);
+              p.textFont('"IM Fell English", serif');
+              p.textStyle(p.ITALIC);
+
+              p.textSize(10);
+              p.text(`rotation: ${rotMode}`, smoothX, smoothY - 18);
+
+              p.textSize(10);
+              p.text(`speed: ${speedPct}%`, smoothX, smoothY - 4);
+
+              p.textStyle(p.NORMAL);
+              p.textSize(8);
+              p.text(`mode: default`, smoothX, smoothY + 12);
+
+              p.textSize(7);
+              p.fill(0, tA * 0.55);
+              p.text('enter → type  ·  space → close', smoothX, smoothY + 26);
+            }
+            p.pop();
+          } else {
+            // centre dot — ring indicator when in typing mode
+            p.noStroke();
+            p.fill(0);
+            p.circle(smoothX, smoothY, 6);
+
+          }
         };
 
         p.mouseClicked = () => {
@@ -411,43 +515,71 @@ export default function AxesCanvas() {
         p.keyPressed = () => {
           Tone.start();
 
-          if (p.key === "Enter") {
-            activeBlock = -1;
-            return false;
-          }
-
-          if (p.key === "Backspace") {
-            const idx = activeBlock !== -1 ? activeBlock : blocks.length - 1;
-            const block = blocks[idx];
-            if (!block) return false;
-            block.chars.pop();
-            if (block.chars.length === 0) {
-              blocks.splice(idx, 1);
-              activeBlock = -1;
+          // ── default mode ───────────────────────────────────────────────────
+          if (mode === 'default') {
+            if (p.key === " ") {
+              showInfo = !showInfo;
+              return false;
             }
+            if (p.key === "Enter") {
+              // enter typing mode
+              showInfo = false;
+              mode = 'typing';
+              activeBlock = -1;
+              return false;
+            }
+            if (p.key === "Backspace") {
+              // still allow deleting the last released word in default mode
+              const idx = blocks.length - 1;
+              const block = blocks[idx];
+              if (!block) return false;
+              block.chars.pop();
+              if (block.chars.length === 0) blocks.splice(idx, 1);
+              return false;
+            }
+            return false; // swallow all other keys in default mode
+          }
+
+          // ── typing mode ────────────────────────────────────────────────────
+          if (mode === 'typing') {
+            if (p.key === "Enter") {
+              // release current word in place, return to default mode
+              activeBlock = -1;
+              mode = 'default';
+              return false;
+            }
+            if (p.key === "Backspace") {
+              const idx = activeBlock !== -1 ? activeBlock : blocks.length - 1;
+              const block = blocks[idx];
+              if (!block) return false;
+              block.chars.pop();
+              if (block.chars.length === 0) {
+                blocks.splice(idx, 1);
+                activeBlock = -1;
+              }
+              return false;
+            }
+            // all printable chars (including space) go into the word
+            if (p.key.length !== 1) return false;
+            if (activeBlock === -1) {
+              const margin = 60;
+              blocks.push({
+                x: p.random(margin, p.width - margin),
+                y: p.random(margin + FONT_SIZE, p.height - margin),
+                chars: [],
+              });
+              activeBlock = blocks.length - 1;
+            }
+            blocks[activeBlock].chars.push({
+              ch: p.key,
+              dy: p.random(-JITTER, JITTER),
+              prevD1: null,
+              prevD2: null,
+              lastTrigger: 0,
+              hitTime: -Infinity,
+            });
             return false;
           }
-
-          if (p.key.length !== 1) return;
-
-          if (activeBlock === -1) {
-            const margin = 60;
-            blocks.push({
-              x: p.random(margin, p.width - margin),
-              y: p.random(margin + FONT_SIZE, p.height - margin),
-              chars: [],
-            });
-            activeBlock = blocks.length - 1;
-          }
-          blocks[activeBlock].chars.push({
-            ch: p.key,
-            dy: p.random(-JITTER, JITTER),
-            prevD1: null,
-            prevD2: null,
-            lastTrigger: 0,
-            hitTime: -Infinity,
-          });
-          return false;
         };
       }, containerRef.current);
     });
