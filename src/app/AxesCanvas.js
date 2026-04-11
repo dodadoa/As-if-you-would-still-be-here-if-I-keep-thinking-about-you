@@ -7,8 +7,8 @@ const TARGET_SPEED = 0.0012;
 const ACCEL = 0.00006;
 const DECEL = 0.00006;
 
-const FONT_SIZE = 14;
-const CHAR_W = FONT_SIZE * 0.75;
+const FONT_SIZE = 18;
+const CHAR_W = FONT_SIZE * 0.52; // IM Fell English — proportional serif, avg glyph width
 const JITTER = 2;
 const TRIGGER_COOLDOWN_MS = 120;
 const HIT_ANIM_MS = 1200;
@@ -22,15 +22,35 @@ const SYMBOL_FONT_SIZE = 20;
 const SYMBOL_CHARS = "!@#$%^&*+=?~<>|\\§¶•◆★☆▲△▽▼◇○●□■";
 const SYMBOL_HIT_ANIM_MS = 1200;
 
-// ── Tone.js synths ─────────────────────────────────────────────────────────────
+// ── Tone.js effects + synths ───────────────────────────────────────────────────
+
+// shared reverb tail — all synths route through this
+let reverb = null;
+function getReverb() {
+  if (!reverb) {
+    reverb = new Tone.Reverb({ decay: 5, wet: 0.55 }).toDestination();
+  }
+  return reverb;
+}
+
+// gentle pre-delay before reverb for depth
+let preDelay = null;
+function getChain() {
+  if (!preDelay) {
+    preDelay = new Tone.FeedbackDelay({ delayTime: "16n", feedback: 0.1, wet: 0.2 });
+    preDelay.connect(getReverb());
+  }
+  return preDelay;
+}
+
 let charSynth = null;
 function getCharSynth() {
   if (!charSynth) {
     charSynth = new Tone.Synth({
       oscillator: { type: "sine" },
-      envelope: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.01 },
-      volume: -12,
-    }).toDestination();
+      envelope: { attack: 0.001, decay: 0.12, sustain: 0, release: 0.05 },
+      volume: -10,
+    }).connect(getChain());
   }
   return charSynth;
 }
@@ -40,9 +60,9 @@ function getCircSynth() {
   if (!circSynth) {
     circSynth = new Tone.Synth({
       oscillator: { type: "triangle" },
-      envelope: { attack: 0.005, decay: 0.3, sustain: 0, release: 0.1 },
-      volume: -10,
-    }).toDestination();
+      envelope: { attack: 0.005, decay: 0.5, sustain: 0, release: 0.2 },
+      volume: -8,
+    }).connect(getChain());
   }
   return circSynth;
 }
@@ -52,21 +72,41 @@ function getSymSynth() {
   if (!symSynth) {
     symSynth = new Tone.Synth({
       oscillator: { type: "sawtooth" },
-      envelope: { attack: 0.01, decay: 0.5, sustain: 0, release: 0.2 },
-      volume: -16,
-    }).toDestination();
+      envelope: { attack: 0.01, decay: 0.7, sustain: 0, release: 0.3 },
+      volume: -14,
+    }).connect(getChain());
   }
   return symSynth;
 }
 
-function playCharPing(freq) {
-  try { getCharSynth().triggerAttackRelease(freq, "32n"); } catch (_) {}
+// ── B major scale across 4 octaves ────────────────────────────────────────────
+// Bmaj7 chord tones (B D# F# A#) sit naturally inside this scale.
+const B_MAJOR = [
+  "B2","C#3","D#3","E3","F#3","G#3","A#3",   // low  (0-6)
+  "B3","C#4","D#4","E4","F#4","G#4","A#4",   // mid  (7-13)
+  "B4","C#5","D#5","E5","F#5","G#5","A#5",   // high (14-20)
+  "B5",                                       // top  (21)
+];
+
+// map a y position to a note within a slice of B_MAJOR
+// top of screen → high index, bottom → low index
+function yToNote(y, height, lo, hi) {
+  const t = 1 - Math.max(0, Math.min(1, y / height)); // 0 (bottom) → 1 (top)
+  const idx = Math.round(lo + t * (hi - lo));
+  return B_MAJOR[Math.max(lo, Math.min(hi, idx))];
 }
-function playCircPing(freq) {
-  try { getCircSynth().triggerAttackRelease(freq, "8n"); } catch (_) {}
+
+function playCharPing(y, height) {
+  // characters live in the high octave (B4–B5)
+  try { getCharSynth().triggerAttackRelease(yToNote(y, height, 14, 21), "32n"); } catch (_) {}
 }
-function playSymPing(freq) {
-  try { getSymSynth().triggerAttackRelease(freq, "16n"); } catch (_) {}
+function playCircPing(y, height) {
+  // circles live in the low octave (B2–B3) — deep, resonant
+  try { getCircSynth().triggerAttackRelease(yToNote(y, height, 0, 6), "8n"); } catch (_) {}
+}
+function playSymPing(y, height) {
+  // symbols live in the mid octave (B3–A#4)
+  try { getSymSynth().triggerAttackRelease(yToNote(y, height, 7, 13), "16n"); } catch (_) {}
 }
 
 // ── p5 helpers ─────────────────────────────────────────────────────────────────
@@ -92,7 +132,7 @@ function drawCross(p, cx, cy, rot) {
 
 // ── circles ────────────────────────────────────────────────────────────────────
 function makeCircle(p) {
-  const r = p.random(6, 18);
+  const r = p.random(3, 9);
   return {
     x: p.random(r, p.width - r),
     y: p.random(r, p.height - r),
@@ -107,9 +147,7 @@ function makeCircle(p) {
   };
 }
 
-function updateAndDrawCircles(p, circles, angle) {
-  const mx = p.mouseX;
-  const my = p.mouseY;
+function updateAndDrawCircles(p, circles, angle, mx, my) {
   const A = angle;
   const now = performance.now();
 
@@ -133,9 +171,7 @@ function updateAndDrawCircles(p, circles, angle) {
         (c.prevD1 !== null && Math.sign(d1) !== Math.sign(c.prevD1)) ||
         (c.prevD2 !== null && Math.sign(d2) !== Math.sign(c.prevD2));
       if (crossed) {
-        // pitch mapped to y: lower circles = lower notes, range 110–440 Hz
-        const freq = 440 * Math.pow(0.25, c.y / p.height);
-        playCircPing(freq);
+        playCircPing(c.y, p.height);
         c.lastTrigger = now;
         c.hitTime = now;
       }
@@ -143,38 +179,54 @@ function updateAndDrawCircles(p, circles, angle) {
     c.prevD1 = d1;
     c.prevD2 = d2;
 
-    // sine-bell scale feedback + color inversion while animating
+    // bloom animation: sine-bell so it grows out then eases back
     const elapsed = now - c.hitTime;
     const t = Math.min(elapsed / CIRCLE_HIT_ANIM_MS, 1);
-    const scale = 1 + 0.6 * Math.sin(t * Math.PI);
-    const isHit = t < 1;
-    const drawFilled = isHit ? !c.filled : c.filled;
+    const bloom = Math.sin(t * Math.PI); // 0 → peak → 0
 
     p.push();
     p.translate(c.x, c.y);
-    p.scale(scale);
-    if (drawFilled) {
-      p.fill(0);
+
+    // diffuse reactive glow: stacked filled circles accumulate opacity toward the core,
+    // like light scattering through a translucent material.
+    // Each layer adds a small alpha contribution — inner area receives the most layers → darkest.
+    if (bloom > 0.02) {
+      const maxSpread = c.r * 7;
+      const LAYERS = 32;
       p.noStroke();
+      for (let i = LAYERS; i >= 0; i--) {
+        const frac = i / LAYERS;                        // 1 = outermost, 0 = circle edge
+        const r = c.r + frac * bloom * maxSpread;
+        const falloff = Math.exp(-frac * frac * 3.5);  // energy drops off fast outward
+        const col = Math.round(255 * frac);             // black at core → white at edge
+        const alpha = bloom * falloff * 22;
+        p.fill(col, alpha);
+        p.circle(0, 0, r * 2);
+      }
+    }
+
+    // main circle — color inverts on hit
+    const isHit = bloom > 0.02;
+    if (c.filled) {
+      if (isHit) { p.fill(255); p.stroke(0); p.strokeWeight(1.5); }
+      else        { p.fill(0);   p.noStroke(); }
     } else {
-      p.noFill();
-      p.stroke(0);
-      p.strokeWeight(1.5 / scale); // keep stroke visually consistent while scaled
+      if (isHit) { p.fill(0);   p.noStroke(); }
+      else        { p.noFill(); p.stroke(0);   p.strokeWeight(1.5); }
     }
     p.circle(0, 0, c.r * 2);
+
     p.pop();
   });
 }
 
 // ── text blocks ────────────────────────────────────────────────────────────────
-function processBlocks(p, blocks, activeBlock, angle) {
-  const mx = p.mouseX;
-  const my = p.mouseY;
+function processBlocks(p, blocks, activeBlock, angle, mx, my) {
   const A = angle;
   const now = performance.now();
 
   p.textSize(FONT_SIZE);
-  p.textFont('"Press Start 2P", monospace');
+  p.textFont('"IM Fell English", serif');
   p.fill(0);
   p.noStroke();
 
@@ -193,8 +245,7 @@ function processBlocks(p, blocks, activeBlock, angle) {
           (char.prevD1 !== null && Math.sign(d1) !== Math.sign(char.prevD1)) ||
           (char.prevD2 !== null && Math.sign(d2) !== Math.sign(char.prevD2));
         if (crossed) {
-          const freq = 880 * Math.pow(0.25, py / p.height);
-          playCharPing(freq);
+          playCharPing(py, p.height);
           char.lastTrigger = now;
           char.hitTime = now;
         }
@@ -245,14 +296,12 @@ function spawnSymbol(p) {
   };
 }
 
-function processSymbols(p, symbols, angle) {
-  const mx = p.mouseX;
-  const my = p.mouseY;
+function processSymbols(p, symbols, angle, mx, my) {
   const A = angle;
   const now = performance.now();
 
   p.textSize(SYMBOL_FONT_SIZE);
-  p.textFont('"Press Start 2P", monospace');
+  p.textFont('"IM Fell English", serif');
   p.textStyle(p.NORMAL);
 
   symbols.forEach((sym) => {
@@ -266,8 +315,7 @@ function processSymbols(p, symbols, angle) {
         (sym.prevD1 !== null && Math.sign(d1) !== Math.sign(sym.prevD1)) ||
         (sym.prevD2 !== null && Math.sign(d2) !== Math.sign(sym.prevD2));
       if (crossed) {
-        const freq = 330 * Math.pow(2, (sym.y / p.height - 0.5) * -1.5);
-        playSymPing(freq);
+        playSymPing(sym.y, p.height);
         sym.lastTrigger = now;
         sym.hitTime = now;
       }
@@ -310,12 +358,16 @@ export default function AxesCanvas() {
         let circles = [];
         let symbols = [];
         let lastSymbolTime = -Infinity;
+        let smoothX = 0;
+        let smoothY = 0;
 
         p.setup = () => {
           p.createCanvas(p.windowWidth, p.windowHeight);
           p.pixelDensity(window.devicePixelRatio || 1);
           p.noCursor();
           circles = Array.from({ length: CIRCLE_COUNT }, () => makeCircle(p));
+          smoothX = p.windowWidth / 2;
+          smoothY = p.windowHeight / 2;
         };
 
         p.windowResized = () => {
@@ -334,17 +386,21 @@ export default function AxesCanvas() {
             lastSymbolTime = now;
           }
 
+          // gaussian-style lag: lerp smoothed position toward actual mouse
+          smoothX = p.lerp(smoothX, p.mouseX, 0.2);
+          smoothY = p.lerp(smoothY, p.mouseY, 0.2);
+
           p.background(255);
 
-          updateAndDrawCircles(p, circles, angle);
-          processSymbols(p, symbols, angle);
-          processBlocks(p, blocks, activeBlock, angle);
-          drawCross(p, p.mouseX, p.mouseY, angle);
+          updateAndDrawCircles(p, circles, angle, smoothX, smoothY);
+          processSymbols(p, symbols, angle, smoothX, smoothY);
+          processBlocks(p, blocks, activeBlock, angle, smoothX, smoothY);
+          drawCross(p, smoothX, smoothY, angle);
 
           // centre dot
           p.noStroke();
           p.fill(0);
-          p.circle(p.mouseX, p.mouseY, 6);
+          p.circle(smoothX, smoothY, 6);
         };
 
         p.mouseClicked = () => {
