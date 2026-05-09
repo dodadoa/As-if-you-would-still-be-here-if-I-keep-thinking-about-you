@@ -16,11 +16,26 @@ const HIT_SCALE = 0.55;
 
 const CIRCLE_COUNT = 8;
 const CIRCLE_HIT_ANIM_MS = 1000;
+const SHOCKWAVE_SPEED = 340;
+const SHOCKWAVE_STROKE = 1.2;
+const SHOCKWAVE_WINDOW = 7;
 
 const SYMBOL_INTERVAL_MS = 5000;
 const SYMBOL_FONT_SIZE = 20;
 const SYMBOL_CHARS = "!@#$%^&*+=?~<>|\\§¶•◆★☆▲△▽▼◇○●□■";
 const SYMBOL_HIT_ANIM_MS = 1200;
+
+// ── agent circle ───────────────────────────────────────────────────────────────
+const AGENT_RADIUS = 20;
+const AGENT_WANDER_SPEED = 1.5;
+const AGENT_STEER_LERP = 0.035;
+const AGENT_INGEST_DIST = 90;      // px radius around agent within which a line-cross triggers ingestion
+const AGENT_MAX_CHARS = 7;         // auto-chord when this many chars ingested
+const AGENT_CHORD_INTERVAL_MS = 3200; // periodic chord even with fewer chars
+const AGENT_ORBIT_RADIUS = 34;
+const AGENT_ORBIT_SPEED = 0.00045; // rad/ms
+const AGENT_CHORD_BLOOM_MS = 1400;
+const AGENT_EAT_ANIM_MS = 350;
 
 // ── Tone.js effects + synths ───────────────────────────────────────────────────
 
@@ -71,12 +86,43 @@ let symSynth = null;
 function getSymSynth() {
   if (!symSynth) {
     symSynth = new Tone.Synth({
-      oscillator: { type: "sawtooth" },
-      envelope: { attack: 0.01, decay: 0.7, sustain: 0, release: 0.3 },
-      volume: -14,
+      oscillator: { type: "triangle" },
+      envelope: { attack: 0.02, decay: 0.9, sustain: 0, release: 1.4 },
+      volume: -18,
     }).connect(getChain());
   }
   return symSynth;
+}
+
+// Bmaj7 chord tones voiced across 4 octaves — always harmonic, never clashing
+const CHORD_TONES = [
+  "B2", "D#3", "F#3", "A#3",
+  "B3", "D#4", "F#4", "A#4",
+  "B4", "D#5", "F#5", "A#5",
+];
+
+let chordSynth = null;
+function getChordSynth() {
+  if (!chordSynth) {
+    chordSynth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: "sine" },
+      envelope: { attack: 0.06, decay: 1.2, sustain: 0.15, release: 2.0 },
+      volume: -10,
+    }).connect(getChain());
+  }
+  return chordSynth;
+}
+
+function charToNote(ch) {
+  // map character code to a Bmaj7 chord tone — always consonant
+  const code = ch.charCodeAt(0);
+  return CHORD_TONES[code % CHORD_TONES.length];
+}
+
+function playChord(ingestedChars) {
+  if (ingestedChars.length === 0) return;
+  const notes = [...new Set(ingestedChars.map((ic) => charToNote(ic.ch)))];
+  try { getChordSynth().triggerAttackRelease(notes, "2n"); } catch (_) {}
 }
 
 // ── B major scale across 4 octaves ────────────────────────────────────────────
@@ -105,8 +151,8 @@ function playCircPing(y, height) {
   try { getCircSynth().triggerAttackRelease(yToNote(y, height, 0, 6), "8n"); } catch (_) {}
 }
 function playSymPing(y, height) {
-  // symbols live in the mid octave (B3–A#4)
-  try { getSymSynth().triggerAttackRelease(yToNote(y, height, 7, 13), "16n"); } catch (_) {}
+  // symbols sit above the low range for a lighter, less boomy hit
+  try { getSymSynth().triggerAttackRelease(yToNote(y, height, 9, 15), "8n"); } catch (_) {}
 }
 
 // ── p5 helpers ─────────────────────────────────────────────────────────────────
@@ -200,10 +246,11 @@ function makeCircle(p) {
     prevD2: null,
     lastTrigger: 0,
     hitTime: -Infinity,
+    lastShockId: -1,
   };
 }
 
-function updateAndDrawCircles(p, circles, angle, mx, my, pulses) {
+function updateAndDrawCircles(p, circles, angle, mx, my, pulses, shockwaves) {
   const A = angle;
   const now = performance.now();
 
@@ -235,6 +282,20 @@ function updateAndDrawCircles(p, circles, angle, mx, my, pulses) {
     }
     c.prevD1 = d1;
     c.prevD2 = d2;
+
+    // expanding radial sweep from center (Shift) can also trigger circles once per wave
+    for (let i = 0; i < shockwaves.length; i++) {
+      const wave = shockwaves[i];
+      if (c.lastShockId === wave.id) continue;
+      const r = ((now - wave.birthTime) / 1000) * SHOCKWAVE_SPEED;
+      const centerDist = Math.hypot(c.x - mx, c.y - my);
+      if (Math.abs(centerDist - r) <= SHOCKWAVE_WINDOW + c.r) {
+        c.lastShockId = wave.id;
+        c.hitTime = now;
+        playCircPing(c.y, p.height);
+        addPulse(pulses, c.x, c.y, mx, my, A);
+      }
+    }
 
     // bloom animation: sine-bell so it grows out then eases back
     const elapsed = now - c.hitTime;
@@ -277,6 +338,27 @@ function updateAndDrawCircles(p, circles, angle, mx, my, pulses) {
   });
 }
 
+function drawShockwaves(p, shockwaves, mx, my) {
+  const now = performance.now();
+  const maxR = Math.hypot(p.width, p.height);
+  for (let i = shockwaves.length - 1; i >= 0; i--) {
+    const wave = shockwaves[i];
+    const elapsed = (now - wave.birthTime) / 1000;
+    const r = elapsed * SHOCKWAVE_SPEED;
+    if (r > maxR) {
+      shockwaves.splice(i, 1);
+      continue;
+    }
+    const alpha = 255 * (1 - r / maxR);
+    p.push();
+    p.noFill();
+    p.stroke(0, alpha);
+    p.strokeWeight(SHOCKWAVE_STROKE);
+    p.circle(mx, my, r * 2);
+    p.pop();
+  }
+}
+
 // ── text blocks ────────────────────────────────────────────────────────────────
 function processBlocks(p, blocks, activeBlock, angle, mx, my, pulses) {
   const A = angle;
@@ -297,11 +379,13 @@ function processBlocks(p, blocks, activeBlock, angle, mx, my, pulses) {
       const d1 = dx * Math.sin(A) - dy * Math.cos(A);
       const d2 = dx * Math.cos(A) + dy * Math.sin(A);
 
+      char.crossedThisFrame = false;
       if (now - char.lastTrigger > TRIGGER_COOLDOWN_MS) {
         const crossed =
           (char.prevD1 !== null && Math.sign(d1) !== Math.sign(char.prevD1)) ||
           (char.prevD2 !== null && Math.sign(d2) !== Math.sign(char.prevD2));
         if (crossed) {
+          char.crossedThisFrame = true;
           playCharPing(py, p.height);
           char.lastTrigger = now;
           char.hitTime = now;
@@ -368,11 +452,13 @@ function processSymbols(p, symbols, angle, mx, my, pulses) {
     const d1 = dx * Math.sin(A) - dy * Math.cos(A);
     const d2 = dx * Math.cos(A) + dy * Math.sin(A);
 
+    sym.crossedThisFrame = false;
     if (now - sym.lastTrigger > TRIGGER_COOLDOWN_MS) {
       const crossed =
         (sym.prevD1 !== null && Math.sign(d1) !== Math.sign(sym.prevD1)) ||
         (sym.prevD2 !== null && Math.sign(d2) !== Math.sign(sym.prevD2));
       if (crossed) {
+        sym.crossedThisFrame = true;
         playSymPing(sym.y, p.height);
         sym.lastTrigger = now;
         sym.hitTime = now;
@@ -400,6 +486,190 @@ function processSymbols(p, symbols, angle, mx, my, pulses) {
   });
 }
 
+// ── agent circle ───────────────────────────────────────────────────────────────
+function makeAgentCircle(p) {
+  const margin = AGENT_RADIUS + 20;
+  return {
+    x: p.width / 2,
+    y: p.height / 2,
+    vx: 0,
+    vy: 0,
+    targetX: p.random(margin, p.width - margin),
+    targetY: p.random(margin, p.height - margin),
+    ingestedChars: [],    // { ch, orbitAngle, eatTime }
+    lastChordTime: -Infinity,
+    chordAnimTime: -Infinity,
+    eatAnimTime: -Infinity,
+  };
+}
+
+function updateAgent(p, agent, blocks, symbols, now) {
+  // ── steer toward wander target ────────────────────────────────────────────
+  const tdx = agent.targetX - agent.x;
+  const tdy = agent.targetY - agent.y;
+  const tdist = Math.hypot(tdx, tdy);
+
+  if (tdist < 45) {
+    const margin = AGENT_RADIUS + 20;
+    agent.targetX = p.random(margin, p.width - margin);
+    agent.targetY = p.random(margin, p.height - margin);
+  }
+
+  const desired_vx = (tdx / tdist) * AGENT_WANDER_SPEED;
+  const desired_vy = (tdy / tdist) * AGENT_WANDER_SPEED;
+  agent.vx = p.lerp(agent.vx, desired_vx, AGENT_STEER_LERP);
+  agent.vy = p.lerp(agent.vy, desired_vy, AGENT_STEER_LERP);
+
+  agent.x += agent.vx;
+  agent.y += agent.vy;
+
+  // bounce off edges
+  if (agent.x - AGENT_RADIUS < 0)       { agent.x = AGENT_RADIUS;           agent.vx = Math.abs(agent.vx); }
+  if (agent.x + AGENT_RADIUS > p.width)  { agent.x = p.width - AGENT_RADIUS;  agent.vx = -Math.abs(agent.vx); }
+  if (agent.y - AGENT_RADIUS < 0)       { agent.y = AGENT_RADIUS;            agent.vy = Math.abs(agent.vy); }
+  if (agent.y + AGENT_RADIUS > p.height) { agent.y = p.height - AGENT_RADIUS; agent.vy = -Math.abs(agent.vy); }
+
+  // ── ingest from text blocks (only when the rotating line just crossed the char) ──
+  for (let bi = blocks.length - 1; bi >= 0; bi--) {
+    const block = blocks[bi];
+    for (let ci = block.chars.length - 1; ci >= 0; ci--) {
+      const char = block.chars[ci];
+      if (!char.crossedThisFrame) continue;
+      const cx = block.x + ci * CHAR_W + CHAR_W / 2;
+      const cy = block.y + char.dy;
+      if (Math.hypot(cx - agent.x, cy - agent.y) > AGENT_INGEST_DIST) continue;
+
+      agent.ingestedChars.push({ ch: char.ch, orbitAngle: p.random(p.TWO_PI), eatTime: now });
+      block.chars.splice(ci, 1);
+      if (block.chars.length === 0) blocks.splice(bi, 1);
+      agent.eatAnimTime = now;
+
+      if (agent.ingestedChars.length >= AGENT_MAX_CHARS) {
+        playChord(agent.ingestedChars);
+        agent.chordAnimTime = now;
+        agent.lastChordTime = now;
+        agent.ingestedChars = [];
+      }
+    }
+  }
+
+  // ── ingest from auto-symbols (same: only on line-cross) ──────────────────
+  for (let si = symbols.length - 1; si >= 0; si--) {
+    const sym = symbols[si];
+    if (!sym.crossedThisFrame) continue;
+    if (Math.hypot(sym.x - agent.x, sym.y - agent.y) > AGENT_INGEST_DIST) continue;
+
+    agent.ingestedChars.push({ ch: sym.ch, orbitAngle: p.random(p.TWO_PI), eatTime: now });
+    symbols.splice(si, 1);
+    agent.eatAnimTime = now;
+
+    if (agent.ingestedChars.length >= AGENT_MAX_CHARS) {
+      playChord(agent.ingestedChars);
+      agent.chordAnimTime = now;
+      agent.lastChordTime = now;
+      agent.ingestedChars = [];
+    }
+  }
+
+  // ── periodic chord even if not full ──────────────────────────────────────
+  if (
+    agent.ingestedChars.length > 0 &&
+    now - agent.lastChordTime > AGENT_CHORD_INTERVAL_MS
+  ) {
+    playChord(agent.ingestedChars);
+    agent.chordAnimTime = now;
+    agent.lastChordTime = now;
+    agent.ingestedChars = [];
+  }
+}
+
+function drawAgent(p, agent, now) {
+  const chordElapsed = now - agent.chordAnimTime;
+  const chordT = Math.min(chordElapsed / AGENT_CHORD_BLOOM_MS, 1);
+  const chordBloom = Math.sin(chordT * Math.PI); // 0 → 1 → 0
+
+  const eatElapsed = now - agent.eatAnimTime;
+  const eatT = Math.min(eatElapsed / AGENT_EAT_ANIM_MS, 1);
+  const eatPulse = Math.sin(eatT * Math.PI);
+
+  const orbitOffset = now * AGENT_ORBIT_SPEED;
+
+  p.push();
+  p.translate(agent.x, agent.y);
+
+  // chord bloom: expanding diffuse glow (same layered technique as circles)
+  if (chordBloom > 0.01) {
+    const maxSpread = AGENT_RADIUS * 9;
+    const LAYERS = 28;
+    p.noStroke();
+    for (let i = LAYERS; i >= 0; i--) {
+      const frac = i / LAYERS;
+      const r = AGENT_RADIUS + frac * chordBloom * maxSpread;
+      const alpha = chordBloom * Math.exp(-frac * frac * 2.8) * 28;
+      p.fill(0, alpha);
+      p.circle(0, 0, r * 2);
+    }
+  }
+
+  // eat flash: brief bright ring
+  if (eatPulse > 0.01) {
+    p.noFill();
+    p.stroke(0, eatPulse * 180);
+    p.strokeWeight(2.5 * eatPulse);
+    p.circle(0, 0, (AGENT_RADIUS + 14) * 2);
+  }
+
+  // outer ring — grows slightly on eat
+  const displayR = AGENT_RADIUS * (1 + eatPulse * 0.18);
+  p.noFill();
+  p.stroke(0);
+  p.strokeWeight(2);
+  p.circle(0, 0, displayR * 2);
+
+  // second inner ring — dashed feel via shorter arc if we had it; use solid thin ring
+  p.strokeWeight(0.8);
+  p.circle(0, 0, (displayR - 5) * 2);
+
+  // centre dot
+  p.noStroke();
+  p.fill(0);
+  p.circle(0, 0, 7);
+
+  // ingested char count label (inside dot area)
+  if (agent.ingestedChars.length > 0) {
+    p.textSize(7);
+    p.textAlign(p.CENTER, p.CENTER);
+    p.textFont('"IM Fell English", serif');
+    p.fill(255);
+    p.text(agent.ingestedChars.length, 0, 0.5);
+  }
+
+  // orbiting ingested characters
+  agent.ingestedChars.forEach((ic, idx) => {
+    // spread evenly + slow drift
+    const baseAngle = (idx / Math.max(agent.ingestedChars.length, 1)) * Math.PI * 2;
+    const angle = baseAngle + orbitOffset + ic.orbitAngle * 0.05;
+    const ox = Math.cos(angle) * AGENT_ORBIT_RADIUS;
+    const oy = Math.sin(angle) * AGENT_ORBIT_RADIUS;
+
+    // fade in from eatTime
+    const ageT = Math.min((now - ic.eatTime) / 280, 1);
+    const chordFade = chordBloom > 0.01 ? 0.4 + chordBloom * 0.6 : 1;
+
+    p.push();
+    p.translate(ox, oy);
+    p.textSize(12);
+    p.textFont('"IM Fell English", serif');
+    p.textAlign(p.CENTER, p.CENTER);
+    p.noStroke();
+    p.fill(0, ageT * chordFade * 210);
+    p.text(ic.ch, 0, 0);
+    p.pop();
+  });
+
+  p.pop();
+}
+
 // ── React component ────────────────────────────────────────────────────────────
 export default function AxesCanvas() {
   const containerRef = useRef(null);
@@ -420,15 +690,19 @@ export default function AxesCanvas() {
         let smoothX = 0;
         let smoothY = 0;
         let linePulses = [];
+        let shockwaves = [];
+        let nextShockwaveId = 1;
         let showInfo = false;
         let infoT = 0;
         let mode = 'default'; // 'default' | 'typing'
+        let agentCircle = null;
 
         p.setup = () => {
           p.createCanvas(p.windowWidth, p.windowHeight);
           p.pixelDensity(window.devicePixelRatio || 1);
           p.noCursor();
           circles = Array.from({ length: CIRCLE_COUNT }, () => makeCircle(p));
+          agentCircle = makeAgentCircle(p);
           smoothX = p.windowWidth / 2;
           smoothY = p.windowHeight / 2;
         };
@@ -455,11 +729,14 @@ export default function AxesCanvas() {
 
           p.background(255);
 
-          updateAndDrawCircles(p, circles, angle, smoothX, smoothY, linePulses);
+          updateAndDrawCircles(p, circles, angle, smoothX, smoothY, linePulses, shockwaves);
           processSymbols(p, symbols, angle, smoothX, smoothY, linePulses);
           processBlocks(p, blocks, activeBlock, angle, smoothX, smoothY, linePulses);
+          updateAgent(p, agentCircle, blocks, symbols, now);
           drawCross(p, smoothX, smoothY, angle);
+          drawShockwaves(p, shockwaves, smoothX, smoothY);
           drawLinePulses(p, linePulses, angle, smoothX, smoothY);
+          drawAgent(p, agentCircle, now);
 
           // info overlay — animates in/out on spacebar (default mode only)
           infoT = p.lerp(infoT, showInfo ? 1 : 0, 0.1);
@@ -514,6 +791,11 @@ export default function AxesCanvas() {
 
         p.keyPressed = () => {
           Tone.start();
+
+          if (p.keyCode === 16) {
+            shockwaves.push({ id: nextShockwaveId++, birthTime: performance.now() });
+            return false;
+          }
 
           // ── default mode ───────────────────────────────────────────────────
           if (mode === 'default') {
