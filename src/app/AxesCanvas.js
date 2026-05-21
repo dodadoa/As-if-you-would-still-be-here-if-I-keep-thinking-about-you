@@ -16,6 +16,8 @@ function createSketchState(p) {
     arcMode: 0,
     arcModeStart: 0,
     pendingArcMode: null,
+    sceneTitleText: "",
+    sceneTitleShownAt: 0,
     angle: 0,
     spinning: false,
     spinSpeed: 0,

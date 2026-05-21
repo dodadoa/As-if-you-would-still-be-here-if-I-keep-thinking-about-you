@@ -284,6 +284,36 @@ export function drawPerformanceCaption(p, ctx, features, now) {
   p.pop();
 }
 
+const SCENE_TITLE_FADE_IN_MS = 600;
+
+function drawSceneTitle(p, ctx, now) {
+  if (!ctx.sceneTitleText) return;
+
+  const age = ctx.sceneTitleShownAt > 0 ? now - ctx.sceneTitleShownAt : 0;
+  const alpha = Math.min(age / SCENE_TITLE_FADE_IN_MS, 1) * 255;
+
+  p.push();
+  p.textFont(TEXT.FONT_FAMILY);
+  p.textSize(15);
+  p.textAlign(p.CENTER, p.CENTER);
+
+  const tw = Math.max(p.textWidth(ctx.sceneTitleText), 80);
+  const padX = 24;
+  const padY = 18;
+  const ew = tw + padX * 2;
+  const eh = 15 + padY * 2;
+
+  p.noFill();
+  p.stroke(0, alpha);
+  p.strokeWeight(1);
+  p.ellipse(ctx.smoothX, ctx.smoothY, ew, eh);
+
+  p.fill(0, alpha);
+  p.noStroke();
+  p.text(ctx.sceneTitleText, ctx.smoothX, ctx.smoothY);
+  p.pop();
+}
+
 export function drawPerformanceFrame(ctx, now, features) {
   const { p } = ctx;
 
@@ -302,5 +332,5 @@ export function drawPerformanceFrame(ctx, now, features) {
   p.fill(0);
   p.circle(ctx.smoothX, ctx.smoothY, 6);
 
-  drawPerformanceCaption(p, ctx, features, now);
+  drawSceneTitle(p, ctx, now);
 }
