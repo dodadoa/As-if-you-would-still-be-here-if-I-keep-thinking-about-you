@@ -35,6 +35,7 @@ function createSketchState(p) {
     infoT: 0,
     mode: "default",
     agentCircle: null,
+    agentEnabled: false,
     writeBackQueue: [],
     lastAutoShock: 0,
     captionText: "",

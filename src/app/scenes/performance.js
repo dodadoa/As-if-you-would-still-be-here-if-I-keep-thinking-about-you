@@ -100,6 +100,8 @@ ctx.smoothX = p.lerp(ctx.smoothX, p.mouseX, UI.MOUSE_LERP);
     ctx.captionShownAt = 0;
     ctx.pendingArcMode = null;
 
+    ctx.agentEnabled = false;
+
     const newTitle = getFeatures(ctx.arcMode).caption;
     if (newTitle) {
       ctx.sceneTitleText = newTitle;
@@ -113,15 +115,16 @@ ctx.smoothX = p.lerp(ctx.smoothX, p.mouseX, UI.MOUSE_LERP);
     const newFeatures = getFeatures(ctx.arcMode);
     if (!prevFeatures.autoFade && newFeatures.autoFade) {
       const t = performance.now();
+      const delay = PERFORMANCE.SCENE_FADE_DELAY_MS;
       ctx.circles.forEach((c) => {
-        c.bornTime = t - Math.random() * PERFORMANCE.FADE.CIRCLE_LIFETIME_MS;
+        c.bornTime = t - Math.random() * Math.max(0, PERFORMANCE.FADE.CIRCLE_LIFETIME_MS - delay);
       });
       ctx.symbols.forEach((s) => {
-        s.bornTime = t - Math.random() * PERFORMANCE.FADE.SYMBOL_LIFETIME_MS;
+        s.bornTime = t - Math.random() * Math.max(0, PERFORMANCE.FADE.SYMBOL_LIFETIME_MS - delay);
       });
       ctx.blocks.forEach((b) => {
         if (b.autoFadeAt == null) {
-          b.autoFadeAt = t + Math.random() * SCENE1.BLOCK_STAGGER_MS;
+          b.autoFadeAt = t + delay + Math.random() * SCENE1.BLOCK_STAGGER_MS;
         }
       });
     }
@@ -163,6 +166,11 @@ export function keyPressedPerformance(ctx, p) {
   }
 
   if (!features.typing) return true;
+
+  if (p.key === "i" && ctx.arcMode === 2 && ctx.mode !== "typing") {
+    ctx.agentEnabled = !ctx.agentEnabled;
+    return true;
+  }
 
   if (p.key === "Enter") {
     if (ctx.mode === "typing") {

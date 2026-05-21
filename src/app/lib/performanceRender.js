@@ -285,12 +285,26 @@ export function drawPerformanceCaption(p, ctx, features, now) {
 }
 
 const SCENE_TITLE_FADE_IN_MS = 600;
+const SCENE_TITLE_HOLD_MS = 4000;
+const SCENE_TITLE_FADE_OUT_MS = 1000;
 
 function drawSceneTitle(p, ctx, now) {
   if (!ctx.sceneTitleText) return;
 
   const age = ctx.sceneTitleShownAt > 0 ? now - ctx.sceneTitleShownAt : 0;
-  const alpha = Math.min(age / SCENE_TITLE_FADE_IN_MS, 1) * 255;
+  let alpha;
+  if (age < SCENE_TITLE_FADE_IN_MS) {
+    alpha = (age / SCENE_TITLE_FADE_IN_MS) * 255;
+  } else if (age < SCENE_TITLE_FADE_IN_MS + SCENE_TITLE_HOLD_MS) {
+    alpha = 255;
+  } else {
+    const outAge = age - SCENE_TITLE_FADE_IN_MS - SCENE_TITLE_HOLD_MS;
+    alpha = Math.max(0, 255 - (outAge / SCENE_TITLE_FADE_OUT_MS) * 255);
+    if (alpha <= 0) {
+      ctx.sceneTitleText = "";
+      return;
+    }
+  }
 
   p.push();
   p.textFont(TEXT.FONT_FAMILY);
@@ -323,8 +337,9 @@ export function drawPerformanceFrame(ctx, now, features) {
     drawLinePulses(p, ctx.linePulses, ctx.angle, ctx.smoothX, ctx.smoothY);
   }
 
-  if (features.agent && ctx.agentCircle) {
-    updateAgent(p, ctx.agentCircle, ctx.blocks, ctx.symbols, now);
+  const agentActive = features.agent && (ctx.arcMode !== 2 || ctx.agentEnabled);
+  if (agentActive && ctx.agentCircle) {
+    updateAgent(p, ctx.agentCircle, ctx.blocks, ctx.symbols, now, ctx.activeBlock);
     drawAgent(p, ctx.agentCircle, now);
   }
 

@@ -14,24 +14,57 @@ export function makeAgentCircle(p) {
     lastChordTime: -Infinity,
     chordAnimTime: -Infinity,
     eatAnimTime: -Infinity,
+    blobPhase: Math.random() * 100,
   };
 }
 
-export function updateAgent(p, agent, blocks, symbols, now) {
-  const tdx = agent.targetX - agent.x;
-  const tdy = agent.targetY - agent.y;
-  const tdist = Math.hypot(tdx, tdy);
+function pickWanderTarget(p, agent) {
+  const margin = AGENT.RADIUS + AGENT.EDGE_MARGIN;
+  agent.targetX = p.random(margin, p.width - margin);
+  agent.targetY = p.random(margin, p.height - margin);
+}
 
-  if (tdist < AGENT.TARGET_REACH_DIST) {
-    const margin = AGENT.RADIUS + AGENT.EDGE_MARGIN;
-    agent.targetX = p.random(margin, p.width - margin);
-    agent.targetY = p.random(margin, p.height - margin);
+function ingestBlock(agent, block, now) {
+  block.chars.forEach((char) => {
+    agent.ingestedChars.push({ ch: char.ch, orbitAngle: Math.random() * Math.PI * 2, eatTime: now });
+    if (agent.ingestedChars.length >= AGENT.MAX_CHARS) {
+      playChord(agent.ingestedChars);
+      agent.chordAnimTime = now;
+      agent.lastChordTime = now;
+      agent.ingestedChars = [];
+    }
+  });
+}
+
+export function updateAgent(p, agent, blocks, symbols, now, activeBlock) {
+  // Target the nearest word block; fall back to random wander when none exist
+  let nearest = null;
+  let nearestDist = Infinity;
+  for (const block of blocks) {
+    if (block.chars.length === 0 || block === activeBlock) continue;
+    const bx = block.x + (block.chars.length * CHAR_W) / 2;
+    const by = block.y;
+    const d = Math.hypot(bx - agent.x, by - agent.y);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearest = { bx, by };
+    }
   }
 
-  const desired_vx = (tdx / tdist) * AGENT.WANDER_SPEED;
-  const desired_vy = (tdy / tdist) * AGENT.WANDER_SPEED;
-  agent.vx = p.lerp(agent.vx, desired_vx, AGENT.STEER_LERP);
-  agent.vy = p.lerp(agent.vy, desired_vy, AGENT.STEER_LERP);
+  if (nearest) {
+    agent.targetX = nearest.bx;
+    agent.targetY = nearest.by;
+  } else {
+    const tdist = Math.hypot(agent.targetX - agent.x, agent.targetY - agent.y);
+    if (tdist < AGENT.TARGET_REACH_DIST) pickWanderTarget(p, agent);
+  }
+
+  const tdx = agent.targetX - agent.x;
+  const tdy = agent.targetY - agent.y;
+  const tdist = Math.max(Math.hypot(tdx, tdy), 0.01);
+  const speed = AGENT.BLOB_SPEED;
+  agent.vx = p.lerp(agent.vx, (tdx / tdist) * speed, AGENT.STEER_LERP);
+  agent.vy = p.lerp(agent.vy, (tdy / tdist) * speed, AGENT.STEER_LERP);
 
   agent.x += agent.vx;
   agent.y += agent.vy;
@@ -41,38 +74,25 @@ export function updateAgent(p, agent, blocks, symbols, now) {
   if (agent.y - AGENT.RADIUS < 0) { agent.y = AGENT.RADIUS; agent.vy = Math.abs(agent.vy); }
   if (agent.y + AGENT.RADIUS > p.height) { agent.y = p.height - AGENT.RADIUS; agent.vy = -Math.abs(agent.vy); }
 
+  // eat any block the agent passes through
   for (let bi = blocks.length - 1; bi >= 0; bi--) {
     const block = blocks[bi];
-    for (let ci = block.chars.length - 1; ci >= 0; ci--) {
-      const char = block.chars[ci];
-      if (!char.crossedThisFrame) continue;
-      const cx = block.x + char.col * CHAR_W + CHAR_W / 2;
-      const cy = block.y + char.dy;
-      if (Math.hypot(cx - agent.x, cy - agent.y) > AGENT.INGEST_DIST) continue;
-
-      agent.ingestedChars.push({ ch: char.ch, orbitAngle: p.random(p.TWO_PI), eatTime: now });
-      block.chars.splice(ci, 1);
-      if (block.chars.length === 0) blocks.splice(bi, 1);
-      agent.eatAnimTime = now;
-
-      if (agent.ingestedChars.length >= AGENT.MAX_CHARS) {
-        playChord(agent.ingestedChars);
-        agent.chordAnimTime = now;
-        agent.lastChordTime = now;
-        agent.ingestedChars = [];
-      }
-    }
+    if (block === activeBlock) continue;
+    const bx = block.x + (block.chars.length * CHAR_W) / 2;
+    const by = block.y;
+    if (Math.hypot(bx - agent.x, by - agent.y) > AGENT.INGEST_DIST) continue;
+    ingestBlock(agent, block, now);
+    blocks.splice(bi, 1);
+    agent.eatAnimTime = now;
   }
 
+  // eat nearby symbols
   for (let si = symbols.length - 1; si >= 0; si--) {
     const sym = symbols[si];
-    if (!sym.crossedThisFrame) continue;
     if (Math.hypot(sym.x - agent.x, sym.y - agent.y) > AGENT.INGEST_DIST) continue;
-
-    agent.ingestedChars.push({ ch: sym.ch, orbitAngle: p.random(p.TWO_PI), eatTime: now });
+    agent.ingestedChars.push({ ch: sym.ch, orbitAngle: Math.random() * Math.PI * 2, eatTime: now });
     symbols.splice(si, 1);
     agent.eatAnimTime = now;
-
     if (agent.ingestedChars.length >= AGENT.MAX_CHARS) {
       playChord(agent.ingestedChars);
       agent.chordAnimTime = now;
@@ -80,7 +100,33 @@ export function updateAgent(p, agent, blocks, symbols, now) {
       agent.ingestedChars = [];
     }
   }
+}
 
+function blobR(p, baseR, angle, now, phase) {
+  const t = now * 0.00038 + phase;
+  const nx = Math.cos(angle);
+  const ny = Math.sin(angle);
+  const n1 = p.noise(nx * 1.4 + t, ny * 1.4 + t * 0.75);
+  const n2 = p.noise(nx * 2.7 - t * 0.55, ny * 2.7 + t * 0.32);
+  return baseR * (0.8 + (n1 * 0.68 + n2 * 0.32) * 0.42);
+}
+
+function drawBlobShape(p, baseR, now, phase) {
+  const N = 28;
+  // precompute so control points share the same radii
+  const radii = Array.from({ length: N }, (_, i) => blobR(p, baseR, (i / N) * p.TWO_PI, now, phase));
+
+  p.beginShape();
+  // catmull-rom needs a leading control point + trailing wrap
+  const last = N - 1;
+  p.curveVertex(Math.cos((last / N) * p.TWO_PI) * radii[last], Math.sin((last / N) * p.TWO_PI) * radii[last]);
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * p.TWO_PI;
+    p.curveVertex(Math.cos(angle) * radii[i], Math.sin(angle) * radii[i]);
+  }
+  p.curveVertex(Math.cos(0) * radii[0], Math.sin(0) * radii[0]);
+  p.curveVertex(Math.cos((1 / N) * p.TWO_PI) * radii[1], Math.sin((1 / N) * p.TWO_PI) * radii[1]);
+  p.endShape();
 }
 
 export function drawAgent(p, agent, now) {
@@ -93,10 +139,13 @@ export function drawAgent(p, agent, now) {
   const eatPulse = Math.sin(eatT * Math.PI);
 
   const orbitOffset = now * AGENT.ORBIT_SPEED;
+  const phase = agent.blobPhase ?? 0;
+  const displayR = AGENT.RADIUS * (1 + eatPulse * 0.2);
 
   p.push();
   p.translate(agent.x, agent.y);
 
+  // chord bloom
   if (chordBloom > 0.01) {
     const maxSpread = AGENT.RADIUS * 9;
     const LAYERS = 28;
@@ -110,22 +159,27 @@ export function drawAgent(p, agent, now) {
     }
   }
 
+  // eat pulse ring
   if (eatPulse > 0.01) {
     p.noFill();
-    p.stroke(0, eatPulse * 180);
-    p.strokeWeight(2.5 * eatPulse);
-    p.circle(0, 0, (AGENT.RADIUS + 14) * 2);
+    p.stroke(0, eatPulse * 160);
+    p.strokeWeight(2 * eatPulse);
+    p.circle(0, 0, (AGENT.RADIUS + 16) * 2);
   }
 
-  const displayR = AGENT.RADIUS * (1 + eatPulse * 0.18);
-  p.noFill();
+  // outer blob
+  p.fill(255);
   p.stroke(0);
-  p.strokeWeight(2);
-  p.circle(0, 0, displayR * 2);
+  p.strokeWeight(1.8);
+  drawBlobShape(p, displayR, now, phase);
 
-  p.strokeWeight(0.8);
-  p.circle(0, 0, (displayR - 5) * 2);
+  // inner blob (slightly different phase → different shape)
+  p.fill(255);
+  p.stroke(0, 50);
+  p.strokeWeight(0.7);
+  drawBlobShape(p, displayR * 0.6, now, phase + 30);
 
+  // center dot
   p.noStroke();
   p.fill(0);
   p.circle(0, 0, 7);
@@ -138,12 +192,12 @@ export function drawAgent(p, agent, now) {
     p.text(agent.ingestedChars.length, 0, 0.5);
   }
 
+  // orbiting ingested chars
   agent.ingestedChars.forEach((ic, idx) => {
     const baseAngle = (idx / Math.max(agent.ingestedChars.length, 1)) * Math.PI * 2;
     const angle = baseAngle + orbitOffset + ic.orbitAngle * 0.05;
     const ox = Math.cos(angle) * AGENT.ORBIT_RADIUS;
     const oy = Math.sin(angle) * AGENT.ORBIT_RADIUS;
-
     const ageT = Math.min((now - ic.eatTime) / 280, 1);
     const chordFade = chordBloom > 0.01 ? 0.4 + chordBloom * 0.6 : 1;
 
