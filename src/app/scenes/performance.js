@@ -65,6 +65,11 @@ export function setupPerformance(ctx) {
   if (!ctx.agentCircle) ctx.agentCircle = makeAgentCircle(ctx.p);
   ctx.writeBackQueue = ctx.writeBackQueue ?? [];
   if ((ctx.arcMode ?? 0) === 0 && ctx.blocks.length === 0) spawnIntroText(ctx);
+  const title = getFeatures(ctx.arcMode ?? 0).caption;
+  if (title && !ctx.sceneTitleText) {
+    ctx.sceneTitleText = title;
+    ctx.sceneTitleShownAt = performance.now();
+  }
 }
 
 export function drawPerformance(ctx, now) {
@@ -94,6 +99,14 @@ ctx.smoothX = p.lerp(ctx.smoothX, p.mouseX, UI.MOUSE_LERP);
     ctx.captionText = "";
     ctx.captionShownAt = 0;
     ctx.pendingArcMode = null;
+
+    const newTitle = getFeatures(ctx.arcMode).caption;
+    if (newTitle) {
+      ctx.sceneTitleText = newTitle;
+      ctx.sceneTitleShownAt = performance.now();
+    } else {
+      ctx.sceneTitleText = "";
+    }
 
     if (ctx.arcMode === 0) spawnIntroText(ctx);
 
