@@ -132,9 +132,9 @@ export const UI = {
 /** Feature flags for each mode (0–4). Pressing a key sets ctx.arcMode. */
 export const PRESETS = [
   // 0 — intro (same elements as scene 1, no caption)
-  { circles: true, scanner: true, spin: true, symbols: true, agent: true, typing: true, shockwave: true, autoFade: false, ghost: false, drift: false, writeBack: false, caption: "" },
+  { circles: true, scanner: true, spin: true, symbols: true, agent: false, typing: true, shockwave: true, autoFade: false, ghost: false, drift: false, writeBack: false, caption: "" },
   // 1 — things there
-  { circles: true, scanner: true, spin: true, symbols: true, agent: true, typing: true, shockwave: true, autoFade: false, ghost: false, drift: false, writeBack: false, caption: "things there" },
+  { circles: true, scanner: true, spin: true, symbols: true, agent: false, typing: true, shockwave: true, autoFade: false, ghost: false, drift: false, writeBack: false, caption: "things there" },
   // 2 — fading, or ghosting
   { circles: true, scanner: true, spin: true, symbols: true, agent: true, typing: true, shockwave: true, autoFade: true, ghost: true, drift: false, writeBack: false, caption: "fading, or ghosting" },
   // 3 — we keep drifting

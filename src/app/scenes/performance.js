@@ -54,7 +54,7 @@ export function resetPerformance(ctx) {
   ctx.spinning = false;
   ctx.spinSpeed = 0;
   ctx.circles = Array.from({ length: CIRCLES.COUNT }, () => makeCircle(p));
-  ctx.agentCircle = makeAgentCircle(p);
+  ctx.agents = [];
   if ((ctx.arcMode ?? 0) === 0) spawnIntroText(ctx);
 }
 
@@ -62,7 +62,7 @@ export function setupPerformance(ctx) {
   if (!ctx.circles?.length) {
     ctx.circles = Array.from({ length: CIRCLES.COUNT }, () => makeCircle(ctx.p));
   }
-  if (!ctx.agentCircle) ctx.agentCircle = makeAgentCircle(ctx.p);
+  ctx.agents = ctx.agents ?? [];
   ctx.writeBackQueue = ctx.writeBackQueue ?? [];
   if ((ctx.arcMode ?? 0) === 0 && ctx.blocks.length === 0) spawnIntroText(ctx);
   const title = getFeatures(ctx.arcMode ?? 0).caption;
@@ -100,7 +100,7 @@ ctx.smoothX = p.lerp(ctx.smoothX, p.mouseX, UI.MOUSE_LERP);
     ctx.captionShownAt = 0;
     ctx.pendingArcMode = null;
 
-    ctx.agentEnabled = false;
+    ctx.agents = [];
 
     const newTitle = getFeatures(ctx.arcMode).caption;
     if (newTitle) {
@@ -167,8 +167,8 @@ export function keyPressedPerformance(ctx, p) {
 
   if (!features.typing) return true;
 
-  if (p.key === "i" && ctx.arcMode === 2 && ctx.mode !== "typing") {
-    ctx.agentEnabled = !ctx.agentEnabled;
+  if (p.key === "i" && ctx.arcMode >= 2 && ctx.mode !== "typing") {
+    ctx.agents.push(makeAgentCircle(ctx.p));
     return true;
   }
 

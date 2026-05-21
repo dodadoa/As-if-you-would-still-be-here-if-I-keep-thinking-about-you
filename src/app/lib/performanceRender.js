@@ -285,7 +285,7 @@ export function drawPerformanceCaption(p, ctx, features, now) {
 }
 
 const SCENE_TITLE_FADE_IN_MS = 600;
-const SCENE_TITLE_HOLD_MS = 4000;
+const SCENE_TITLE_HOLD_MS = 4400;
 const SCENE_TITLE_FADE_OUT_MS = 1000;
 
 function drawSceneTitle(p, ctx, now) {
@@ -337,10 +337,11 @@ export function drawPerformanceFrame(ctx, now, features) {
     drawLinePulses(p, ctx.linePulses, ctx.angle, ctx.smoothX, ctx.smoothY);
   }
 
-  const agentActive = features.agent && (ctx.arcMode !== 2 || ctx.agentEnabled);
-  if (agentActive && ctx.agentCircle) {
-    updateAgent(p, ctx.agentCircle, ctx.blocks, ctx.symbols, now, ctx.activeBlock);
-    drawAgent(p, ctx.agentCircle, now);
+  if (features.agent && ctx.agents?.length) {
+    for (const agent of ctx.agents) {
+      updateAgent(p, agent, ctx.blocks, ctx.symbols, now, ctx.activeBlock);
+      drawAgent(p, agent, now);
+    }
   }
 
   p.noStroke();

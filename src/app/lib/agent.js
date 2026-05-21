@@ -14,7 +14,6 @@ export function makeAgentCircle(p) {
     lastChordTime: -Infinity,
     chordAnimTime: -Infinity,
     eatAnimTime: -Infinity,
-    blobPhase: Math.random() * 100,
   };
 }
 
@@ -102,33 +101,6 @@ export function updateAgent(p, agent, blocks, symbols, now, activeBlock) {
   }
 }
 
-function blobR(p, baseR, angle, now, phase) {
-  const t = now * 0.00038 + phase;
-  const nx = Math.cos(angle);
-  const ny = Math.sin(angle);
-  const n1 = p.noise(nx * 1.4 + t, ny * 1.4 + t * 0.75);
-  const n2 = p.noise(nx * 2.7 - t * 0.55, ny * 2.7 + t * 0.32);
-  return baseR * (0.8 + (n1 * 0.68 + n2 * 0.32) * 0.42);
-}
-
-function drawBlobShape(p, baseR, now, phase) {
-  const N = 28;
-  // precompute so control points share the same radii
-  const radii = Array.from({ length: N }, (_, i) => blobR(p, baseR, (i / N) * p.TWO_PI, now, phase));
-
-  p.beginShape();
-  // catmull-rom needs a leading control point + trailing wrap
-  const last = N - 1;
-  p.curveVertex(Math.cos((last / N) * p.TWO_PI) * radii[last], Math.sin((last / N) * p.TWO_PI) * radii[last]);
-  for (let i = 0; i < N; i++) {
-    const angle = (i / N) * p.TWO_PI;
-    p.curveVertex(Math.cos(angle) * radii[i], Math.sin(angle) * radii[i]);
-  }
-  p.curveVertex(Math.cos(0) * radii[0], Math.sin(0) * radii[0]);
-  p.curveVertex(Math.cos((1 / N) * p.TWO_PI) * radii[1], Math.sin((1 / N) * p.TWO_PI) * radii[1]);
-  p.endShape();
-}
-
 export function drawAgent(p, agent, now) {
   const chordElapsed = now - agent.chordAnimTime;
   const chordT = Math.min(chordElapsed / AGENT.CHORD_BLOOM_MS, 1);
@@ -139,7 +111,6 @@ export function drawAgent(p, agent, now) {
   const eatPulse = Math.sin(eatT * Math.PI);
 
   const orbitOffset = now * AGENT.ORBIT_SPEED;
-  const phase = agent.blobPhase ?? 0;
   const displayR = AGENT.RADIUS * (1 + eatPulse * 0.2);
 
   p.push();
@@ -167,17 +138,11 @@ export function drawAgent(p, agent, now) {
     p.circle(0, 0, (AGENT.RADIUS + 16) * 2);
   }
 
-  // outer blob
-  p.fill(255);
+  // circle body
+  p.noFill();
   p.stroke(0);
-  p.strokeWeight(1.8);
-  drawBlobShape(p, displayR, now, phase);
-
-  // inner blob (slightly different phase → different shape)
-  p.fill(255);
-  p.stroke(0, 50);
-  p.strokeWeight(0.7);
-  drawBlobShape(p, displayR * 0.6, now, phase + 30);
+  p.strokeWeight(1.2);
+  p.circle(0, 0, displayR * 2);
 
   // center dot
   p.noStroke();
