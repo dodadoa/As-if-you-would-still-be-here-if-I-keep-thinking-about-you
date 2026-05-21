@@ -303,10 +303,10 @@ function drawSceneTitle(p, ctx, now) {
   const ew = tw + padX * 2;
   const eh = 15 + padY * 2;
 
-  p.noFill();
+  p.fill(255, alpha);
   p.stroke(0, alpha);
   p.strokeWeight(1);
-  p.ellipse(ctx.smoothX, ctx.smoothY, ew, eh);
+  p.rect(ctx.smoothX - ew / 2, ctx.smoothY - eh / 2, ew, eh, 20);
 
   p.fill(0, alpha);
   p.noStroke();
