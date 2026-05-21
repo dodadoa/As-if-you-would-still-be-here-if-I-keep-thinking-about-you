@@ -14,6 +14,7 @@ export function makeAgentCircle(p) {
     lastChordTime: -Infinity,
     chordAnimTime: -Infinity,
     eatAnimTime: -Infinity,
+    targetBlock: null,
   };
 }
 
@@ -35,24 +36,31 @@ function ingestBlock(agent, block, now) {
   });
 }
 
-export function updateAgent(p, agent, blocks, symbols, now, activeBlock) {
-  // Target the nearest word block; fall back to random wander when none exist
-  let nearest = null;
-  let nearestDist = Infinity;
+export function updateAgent(p, agent, allAgents, blocks, symbols, now, activeBlock) {
+  // Drop claim if the block was eaten or emptied
+  if (agent.targetBlock && (agent.targetBlock.chars.length === 0 || !blocks.includes(agent.targetBlock))) {
+    agent.targetBlock = null;
+  }
+
+  // Find the nearest unclaimed block (claimed by another agent)
+  const claimed = new Set(allAgents.filter(a => a !== agent).map(a => a.targetBlock).filter(Boolean));
+  let bestBlock = null;
+  let bestDist = Infinity;
   for (const block of blocks) {
-    if (block.chars.length === 0 || block === activeBlock) continue;
+    if (block.chars.length === 0 || block === activeBlock || claimed.has(block)) continue;
     const bx = block.x + (block.chars.length * CHAR_W) / 2;
     const by = block.y;
     const d = Math.hypot(bx - agent.x, by - agent.y);
-    if (d < nearestDist) {
-      nearestDist = d;
-      nearest = { bx, by };
-    }
+    if (d < bestDist) { bestDist = d; bestBlock = block; }
   }
 
-  if (nearest) {
-    agent.targetX = nearest.bx;
-    agent.targetY = nearest.by;
+  if (bestBlock) {
+    agent.targetBlock = bestBlock;
+    agent.targetX = bestBlock.x + (bestBlock.chars.length * CHAR_W) / 2;
+    agent.targetY = bestBlock.y;
+  } else if (agent.targetBlock) {
+    agent.targetX = agent.targetBlock.x + (agent.targetBlock.chars.length * CHAR_W) / 2;
+    agent.targetY = agent.targetBlock.y;
   } else {
     const tdist = Math.hypot(agent.targetX - agent.x, agent.targetY - agent.y);
     if (tdist < AGENT.TARGET_REACH_DIST) pickWanderTarget(p, agent);
@@ -81,6 +89,7 @@ export function updateAgent(p, agent, blocks, symbols, now, activeBlock) {
     const by = block.y;
     if (Math.hypot(bx - agent.x, by - agent.y) > AGENT.INGEST_DIST) continue;
     ingestBlock(agent, block, now);
+    if (agent.targetBlock === block) agent.targetBlock = null;
     blocks.splice(bi, 1);
     agent.eatAnimTime = now;
   }

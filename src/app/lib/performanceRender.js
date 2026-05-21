@@ -339,7 +339,7 @@ export function drawPerformanceFrame(ctx, now, features) {
 
   if (features.agent && ctx.agents?.length) {
     for (const agent of ctx.agents) {
-      updateAgent(p, agent, ctx.blocks, ctx.symbols, now, ctx.activeBlock);
+      updateAgent(p, agent, ctx.agents, ctx.blocks, ctx.symbols, now, ctx.activeBlock);
       drawAgent(p, agent, now);
     }
   }
