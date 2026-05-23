@@ -1,4 +1,4 @@
-import { AGENT, CHAR_W, TEXT } from "../config";
+import { AGENT, CHAR_W, TEXT, ELEMENT_SCALE } from "../config";
 import { playChord } from "./audio";
 
 export function makeAgentCircle(p) {
@@ -144,7 +144,7 @@ export function drawAgent(p, agent, now) {
     p.noFill();
     p.stroke(0, eatPulse * 160);
     p.strokeWeight(2 * eatPulse);
-    p.circle(0, 0, (AGENT.RADIUS + 16) * 2);
+    p.circle(0, 0, (AGENT.RADIUS + 16 * ELEMENT_SCALE) * 2);
   }
 
   // circle body
@@ -156,10 +156,10 @@ export function drawAgent(p, agent, now) {
   // center dot
   p.noStroke();
   p.fill(0);
-  p.circle(0, 0, 7);
+  p.circle(0, 0, 7 * ELEMENT_SCALE);
 
   if (agent.ingestedChars.length > 0) {
-    p.textSize(7);
+    p.textSize(7 * ELEMENT_SCALE);
     p.textAlign(p.CENTER, p.CENTER);
     p.textFont(TEXT.FONT_FAMILY);
     p.fill(255);
@@ -177,7 +177,7 @@ export function drawAgent(p, agent, now) {
 
     p.push();
     p.translate(ox, oy);
-    p.textSize(12);
+    p.textSize(12 * ELEMENT_SCALE);
     p.textFont(TEXT.FONT_FAMILY);
     p.textAlign(p.CENTER, p.CENTER);
     p.noStroke();

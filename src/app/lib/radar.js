@@ -1,4 +1,4 @@
-import { RADAR, CIRCLES, SHOCKWAVE, TEXT } from "../config";
+import { RADAR, CIRCLES, SHOCKWAVE, TEXT, ELEMENT_SCALE } from "../config";
 import { playCircPing } from "./audio";
 
 export function distToEdge(p, cx, cy, rot) {
@@ -68,7 +68,7 @@ export function drawLinePulses(p, pulses, angle, smoothX, smoothY) {
 }
 
 export function makeCircle(p) {
-  const r = p.random(3, 9);
+  const r = p.random(3 * ELEMENT_SCALE, 9 * ELEMENT_SCALE);
   return {
     x: p.random(r, p.width - r),
     y: p.random(r, p.height - r),

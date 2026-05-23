@@ -1,4 +1,4 @@
-import { CHAR_W, CIRCLES, PERFORMANCE, SHOCKWAVE, SYMBOLS, TEXT } from "../config";
+import { CHAR_W, CIRCLES, ELEMENT_SCALE, PERFORMANCE, SHOCKWAVE, SYMBOLS, TEXT } from "../config";
 import { playCharPing, playCircPing, playSymPing } from "./audio";
 import { addPulse, drawCross, drawLinePulses, drawShockwaves } from "./radar";
 import { drawAgent, updateAgent } from "./agent";
@@ -127,7 +127,7 @@ export function updatePerformanceCircles(p, ctx, angle, mx, my, features, now) {
   }
 
   while (features.circles && circles.length < CIRCLES.COUNT) {
-    const r = p.random(3, 9);
+    const r = p.random(3 * ELEMENT_SCALE, 9 * ELEMENT_SCALE);
     circles.push({
       x: p.random(r, p.width - r),
       y: p.random(r, p.height - r),
@@ -278,7 +278,7 @@ export function drawPerformanceCaption(p, ctx, features, now) {
   p.textAlign(p.CENTER, p.BOTTOM);
   p.textFont(TEXT.FONT_FAMILY);
   p.fill(0, alpha);
-  p.textSize(13);
+  p.textSize(13 * ELEMENT_SCALE);
   p.textStyle(p.ITALIC);
   p.text(features.caption, p.width / 2, p.height - 12);
   p.pop();
@@ -306,21 +306,22 @@ function drawSceneTitle(p, ctx, now) {
     }
   }
 
+  const titleSize = TEXT.FONT_SIZE;
   p.push();
   p.textFont(TEXT.FONT_FAMILY);
-  p.textSize(15);
+  p.textSize(titleSize);
   p.textAlign(p.CENTER, p.CENTER);
 
   const tw = Math.max(p.textWidth(ctx.sceneTitleText), 80);
-  const padX = 24;
-  const padY = 18;
+  const padX = 24 * ELEMENT_SCALE;
+  const padY = 18 * ELEMENT_SCALE;
   const ew = tw + padX * 2;
-  const eh = 15 + padY * 2;
+  const eh = titleSize + padY * 2;
 
   p.fill(255, alpha);
   p.stroke(0, alpha);
   p.strokeWeight(1);
-  p.rect(ctx.smoothX - ew / 2, ctx.smoothY - eh / 2, ew, eh, 20);
+  p.rect(ctx.smoothX - ew / 2, ctx.smoothY - eh / 2, ew, eh, 20 * ELEMENT_SCALE);
 
   p.fill(0, alpha);
   p.noStroke();

@@ -45,6 +45,7 @@ export function resetPerformance(ctx) {
   ctx.scriptedSpawned = new Set();
   ctx.arcModeStart = performance.now();
   ctx.blocks = [];
+  ctx.dissolveBlocks = [];
   ctx.symbols = [];
   ctx.activeBlock = null;
   ctx.mode = "default";
@@ -91,6 +92,7 @@ ctx.smoothX = p.lerp(ctx.smoothX, p.mouseX, UI.MOUSE_LERP);
   ctx.smoothY = p.lerp(ctx.smoothY, p.mouseY, UI.MOUSE_LERP);
 
   if (ctx.pendingArcMode != null) {
+    const prevArcMode = ctx.arcMode;
     const prevFeatures = getFeatures(ctx.arcMode);
     ctx.arcMode = ctx.pendingArcMode;
     ctx.arcModeStart = performance.now();
@@ -128,6 +130,13 @@ ctx.smoothX = p.lerp(ctx.smoothX, p.mouseX, UI.MOUSE_LERP);
         }
       });
     }
+
+    if (prevArcMode === 0 && ctx.arcMode === 1) {
+      const t = performance.now();
+      ctx.blocks.forEach((b) => { b.autoFadeAt = t + 5000; });
+      ctx.dissolveBlocks = ctx.blocks;
+      ctx.blocks = [];
+    }
   }
 
   p.background(255);
@@ -138,6 +147,10 @@ ctx.smoothX = p.lerp(ctx.smoothX, p.mouseX, UI.MOUSE_LERP);
 
   if (features.scanner && ctx.blocks.length > 0) {
     updateBlockCollisions(p, ctx.blocks, ctx.angle, ctx.smoothX, ctx.smoothY, ctx.linePulses);
+  }
+
+  if (ctx.dissolveBlocks?.length) {
+    processDissolvingBlocks(p, ctx.dissolveBlocks, null, now);
   }
 
   if (features.autoFade) {

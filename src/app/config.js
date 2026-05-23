@@ -1,5 +1,8 @@
 /** Central tuning knobs for cursor-radar. */
 
+/** Visual-element size multiplier. 0 = invisible, 1 = default, 2 = double. */
+export const ELEMENT_SCALE = 1.6;
+
 /** Set to ~0.02 to run each 5-min arc in ~6 seconds while developing. */
 export const PERFORMANCE = {
   TIME_SCALE: 1,
@@ -49,7 +52,7 @@ export const RADAR = {
 };
 
 export const TEXT = {
-  FONT_SIZE: 18,
+  FONT_SIZE: 18 * ELEMENT_SCALE,
   JITTER: 2,
   TRIGGER_COOLDOWN_MS: 120,
   HIT_ANIM_MS: 1200,
@@ -74,21 +77,21 @@ export const SHOCKWAVE = {
 export const SYMBOLS = {
   INTERVAL_MS: 5000,
   SYMBOL_INTERVAL_PERFORMANCE_MS: 3800,
-  FONT_SIZE: 20,
+  FONT_SIZE: 20 * ELEMENT_SCALE,
   CHARS: "!@#$%^&*+=?~<>|\\§¶•◆★☆▲△▽▼◇○●□■",
   HIT_ANIM_MS: 1200,
   FADE_IN_MS: 800,
 };
 
 export const AGENT = {
-  RADIUS: 20,
+  RADIUS: 20 * ELEMENT_SCALE,
   WANDER_SPEED: 1.5,
   BLOB_SPEED: 0.45,
   STEER_LERP: 0.025,
   INGEST_DIST: 90,
   MAX_CHARS: 7,
   CHORD_INTERVAL_MS: 3200,
-  ORBIT_RADIUS: 34,
+  ORBIT_RADIUS: 34 * ELEMENT_SCALE,
   ORBIT_SPEED: 0.00045,
   CHORD_BLOOM_MS: 1400,
   EAT_ANIM_MS: 350,
@@ -98,7 +101,7 @@ export const AGENT = {
 
 export const SCENE1 = {
   CHAR_LIFETIME_MS: 14000,
-  DISSOLVE_MS: 10000,
+  DISSOLVE_MS: 3500,
   DISSOLVE_SCALE: 0.45,
   DISSOLVE_DRIFT: 22,
   CURSOR_BLINK_MS: 500,
