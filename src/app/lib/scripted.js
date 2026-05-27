@@ -1,5 +1,5 @@
 import { CHAR_W, PERFORMANCE, SCRIPTED_TEXT, TEXT, getFeatures } from "../config";
-import { makeChar } from "./text";
+import { makeChar, scheduleBlockCharFade } from "./text";
 
 export function tickScriptedText(ctx, now) {
   const arcIndex = ctx.arcMode ?? 1;
@@ -25,12 +25,10 @@ export function tickScriptedText(ctx, now) {
       chars: entry.text.split("").map((ch, i) => makeChar(p, ch, i)),
       isScripted: true,
       bornTime: now,
-      vx: features.drift ? (Math.random() - 0.5) * PERFORMANCE.DRIFT.TEXT_SPEED : 0,
-      vy: features.drift ? (Math.random() - 0.5) * PERFORMANCE.DRIFT.TEXT_SPEED : 0,
     };
 
     if (features.autoFade) {
-      block.chars.forEach((c) => { c.placedTime = now; });
+      scheduleBlockCharFade(block, now);
     }
 
     ctx.blocks.push(block);

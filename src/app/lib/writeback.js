@@ -1,5 +1,5 @@
 import { PERFORMANCE, TEXT } from "../config";
-import { makeChar } from "./text";
+import { makeChar, scheduleBlockCharFade } from "./text";
 
 const RESPONSES = [
   "i am trying to hear you",
@@ -60,8 +60,6 @@ export function tickWriteBack(ctx, now, features) {
       y: job.y,
       chars: [],
       isReply: true,
-      vx: features.drift ? (Math.random() - 0.5) * PERFORMANCE.DRIFT.TEXT_SPEED : 0,
-      vy: features.drift ? (Math.random() - 0.5) * PERFORMANCE.DRIFT.TEXT_SPEED : 0,
       bornTime: now,
     });
     job.blockIndex = ctx.blocks.length - 1;
@@ -76,17 +74,13 @@ export function tickWriteBack(ctx, now, features) {
   const ch = job.text[job.charIndex];
   const char = makeChar(ctx.p, ch, block.chars.length);
   char.placedTime = features.autoFade ? null : now;
-  if (features.autoFade) {
-    char.fadeAt = now + PERFORMANCE.FADE.TEXT_LIFETIME_MS;
-  }
   block.chars.push(char);
   job.charIndex += 1;
   job.nextCharAt = now + PERFORMANCE.WRITE_BACK_CHAR_MS;
 
   if (job.charIndex >= job.text.length) {
     if (features.autoFade) {
-      const stamp = performance.now();
-      block.chars.forEach((c) => { c.placedTime = stamp; });
+      scheduleBlockCharFade(block, performance.now());
     }
     ctx.writeBackQueue.shift();
   }

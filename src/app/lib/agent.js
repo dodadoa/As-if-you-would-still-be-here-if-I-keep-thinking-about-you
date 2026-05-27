@@ -110,6 +110,37 @@ export function updateAgent(p, agent, allAgents, blocks, symbols, now, activeBlo
   }
 }
 
+function drawChordBloom(p, innerR, bloom, maxSpread) {
+  if (bloom <= 0.01) return;
+
+  const outerR = innerR + bloom * maxSpread;
+  const ctx = p.drawingContext;
+  const peak = bloom * 0.38;
+
+  // Wide diffuse halo
+  const halo = ctx.createRadialGradient(0, 0, innerR * 0.35, 0, 0, outerR);
+  halo.addColorStop(0, `rgba(0,0,0,${peak * 0.12})`);
+  halo.addColorStop(0.45, `rgba(0,0,0,${peak * 0.07})`);
+  halo.addColorStop(0.72, `rgba(0,0,0,${peak * 0.025})`);
+  halo.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tighter core glow — smooth Gaussian-like falloff
+  const core = ctx.createRadialGradient(0, 0, innerR * 0.08, 0, 0, innerR + bloom * maxSpread * 0.62);
+  core.addColorStop(0, `rgba(0,0,0,${peak * 0.95})`);
+  core.addColorStop(0.22, `rgba(0,0,0,${peak * 0.62})`);
+  core.addColorStop(0.48, `rgba(0,0,0,${peak * 0.28})`);
+  core.addColorStop(0.72, `rgba(0,0,0,${peak * 0.08})`);
+  core.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(0, 0, innerR + bloom * maxSpread * 0.62, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 export function drawAgent(p, agent, now) {
   const chordElapsed = now - agent.chordAnimTime;
   const chordT = Math.min(chordElapsed / AGENT.CHORD_BLOOM_MS, 1);
@@ -127,16 +158,8 @@ export function drawAgent(p, agent, now) {
 
   // chord bloom
   if (chordBloom > 0.01) {
-    const maxSpread = AGENT.RADIUS * 9;
-    const LAYERS = 28;
     p.noStroke();
-    for (let i = LAYERS; i >= 0; i--) {
-      const frac = i / LAYERS;
-      const r = AGENT.RADIUS + frac * chordBloom * maxSpread;
-      const alpha = chordBloom * Math.exp(-frac * frac * 2.8) * 28;
-      p.fill(0, alpha);
-      p.circle(0, 0, r * 2);
-    }
+    drawChordBloom(p, AGENT.RADIUS, chordBloom, AGENT.RADIUS * 9);
   }
 
   // eat pulse ring

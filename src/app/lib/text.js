@@ -15,6 +15,79 @@ export function makeChar(p, ch, col = 0) {
   };
 }
 
+export function charPos(block, char) {
+  return {
+    x: block.x + char.col * CHAR_W + (char.driftX ?? 0),
+    y: block.y + char.dy + (char.driftY ?? 0),
+  };
+}
+
+export function driftBlockChars(p, blocks, skipBlock, speed) {
+  const margin = TEXT.MARGIN;
+  for (const block of blocks) {
+    if (block === skipBlock) continue;
+    for (const char of block.chars) {
+      if (char.vx == null) {
+        char.vx = (Math.random() - 0.5) * speed;
+        char.vy = (Math.random() - 0.5) * speed;
+      }
+      char.driftX = (char.driftX ?? 0) + char.vx;
+      char.driftY = (char.driftY ?? 0) + char.vy;
+
+      const px = block.x + char.col * CHAR_W + char.driftX;
+      const py = block.y + char.dy + char.driftY;
+      if (px < margin) {
+        char.driftX += margin - px;
+        char.vx = Math.abs(char.vx);
+      } else if (px > p.width - margin) {
+        char.driftX -= px - (p.width - margin);
+        char.vx = -Math.abs(char.vx);
+      }
+      if (py < margin) {
+        char.driftY += margin - py;
+        char.vy = Math.abs(char.vy);
+      } else if (py > p.height - margin) {
+        char.driftY -= py - (p.height - margin);
+        char.vy = -Math.abs(char.vy);
+      }
+    }
+  }
+}
+
+export function scheduleBlockCharFade(block, startTime) {
+  block.chars.forEach((char, i) => {
+    if (char.placedTime == null) {
+      char.placedTime = startTime + i * SCENE1.CHAR_FADE_STAGGER_MS;
+    }
+  });
+}
+
+export function getCharFadeState(char, now) {
+  if (char.placedTime == null) {
+    return { alpha: 255, opacity: 1, scale: 1, driftY: 0, remove: false };
+  }
+
+  const age = now - char.placedTime;
+  if (age < 0) {
+    return { alpha: 255, opacity: 1, scale: 1, driftY: 0, remove: false };
+  }
+  if (age >= SCENE1.CHAR_LIFETIME_MS + SCENE1.DISSOLVE_MS) {
+    return { alpha: 0, opacity: 0, scale: 1, driftY: 0, remove: true };
+  }
+  if (age > SCENE1.CHAR_LIFETIME_MS) {
+    const t = (age - SCENE1.CHAR_LIFETIME_MS) / SCENE1.DISSOLVE_MS;
+    const opacity = 1 - t;
+    return {
+      alpha: 255 * opacity,
+      opacity,
+      scale: 1 + t * SCENE1.DISSOLVE_SCALE,
+      driftY: -t * SCENE1.DISSOLVE_DRIFT,
+      remove: false,
+    };
+  }
+  return { alpha: 255, opacity: 1, scale: 1, driftY: 0, remove: false };
+}
+
 export function stampScene1Placement(blocks, now, skipBlockIndex = -1) {
   blocks.forEach((block, bi) => {
     if (bi === skipBlockIndex) return;
@@ -32,55 +105,47 @@ export function processDissolvingBlocks(p, blocks, activeBlock, now) {
   for (let bi = blocks.length - 1; bi >= 0; bi--) {
     const block = blocks[bi];
 
-    // auto-stamp chars when the per-block fade timer fires (arc 2 typed words)
+    // auto-stamp chars when the per-block fade timer fires (arc 2+ typed words)
     if (block.autoFadeAt != null && now >= block.autoFadeAt) {
-      block.chars.forEach((c) => {
-        if (c.placedTime == null) {
-          const delay = Math.random() * SCENE1.CHAR_STAGGER_MS;
-          c.placedTime = now - SCENE1.CHAR_LIFETIME_MS + delay;
-        }
-      });
+      scheduleBlockCharFade(block, now);
       block.autoFadeAt = null;
     }
 
     for (let i = block.chars.length - 1; i >= 0; i--) {
       const char = block.chars[i];
-      const drawX = block.x + char.col * CHAR_W;
+      const pos = charPos(block, char);
+      const drawX = pos.x;
+      const fade = getCharFadeState(char, now);
 
       if (char.placedTime == null) {
-        const drawY = block.y + char.dy;
+        const hitElapsed = now - (char.hitTime ?? -Infinity);
+        const hitT = Math.min(hitElapsed / TEXT.HIT_ANIM_MS, 1);
+        const hitScale = 1 + TEXT.HIT_SCALE * Math.sin(hitT * Math.PI);
         p.push();
-        p.translate(drawX + CHAR_W / 2, drawY);
+        p.translate(drawX + CHAR_W / 2, pos.y);
+        p.scale(hitScale);
         p.fill(0);
-        p.textStyle(p.NORMAL);
+        p.textStyle(hitT < 1 ? p.BOLD : p.NORMAL);
         p.text(char.ch, -CHAR_W / 2, 0);
         p.pop();
         continue;
       }
 
-      const age = now - char.placedTime;
-      if (age >= SCENE1.CHAR_LIFETIME_MS + SCENE1.DISSOLVE_MS) {
+      if (fade.remove) {
         block.chars.splice(i, 1);
         continue;
       }
 
-      let alpha = 255;
-      let scale = 1;
-      let driftY = 0;
-      if (age > SCENE1.CHAR_LIFETIME_MS) {
-        const t = (age - SCENE1.CHAR_LIFETIME_MS) / SCENE1.DISSOLVE_MS;
-        alpha = 255 * (1 - t);
-        scale = 1 + t * SCENE1.DISSOLVE_SCALE;
-        driftY = -t * SCENE1.DISSOLVE_DRIFT;
-      }
-
-      const drawY = block.y + char.dy + driftY;
+      const hitElapsed = now - (char.hitTime ?? -Infinity);
+      const hitT = Math.min(hitElapsed / TEXT.HIT_ANIM_MS, 1);
+      const scale = fade.scale * (1 + TEXT.HIT_SCALE * Math.sin(hitT * Math.PI));
+      const drawY = pos.y + fade.driftY;
 
       p.push();
       p.translate(drawX + CHAR_W / 2, drawY);
       p.scale(scale);
-      p.fill(0, alpha);
-      p.textStyle(p.NORMAL);
+      p.fill(0, fade.alpha);
+      p.textStyle(hitT < 1 ? p.BOLD : p.NORMAL);
       p.text(char.ch, -CHAR_W / 2, 0);
       p.pop();
     }
@@ -106,8 +171,9 @@ export function updateBlockCollisions(p, blocks, angle, mx, my, pulses) {
 
   blocks.forEach((block) => {
     block.chars.forEach((char) => {
-      const px = block.x + char.col * CHAR_W + CHAR_W / 2;
-      const py = block.y + char.dy - TEXT.FONT_SIZE / 2;
+      const pos = charPos(block, char);
+      const px = pos.x + CHAR_W / 2;
+      const py = pos.y - TEXT.FONT_SIZE / 2;
       const dx = px - mx;
       const dy = py - my;
 
@@ -121,10 +187,11 @@ export function updateBlockCollisions(p, blocks, angle, mx, my, pulses) {
           (char.prevD2 !== null && Math.sign(d2) !== Math.sign(char.prevD2));
         if (crossed) {
           char.crossedThisFrame = true;
-          playCharPing(py, p.height);
+          const opacity = getCharFadeState(char, now).opacity;
+          playCharPing(py, p.height, opacity);
           char.lastTrigger = now;
           char.hitTime = now;
-          addPulse(pulses, block.x + char.col * CHAR_W + CHAR_W / 2, block.y + char.dy, mx, my, A);
+          addPulse(pulses, pos.x + CHAR_W / 2, pos.y, mx, my, A);
         }
       }
       char.prevD1 = d1;
@@ -144,15 +211,13 @@ export function processBlocks(p, blocks, activeBlock, angle, mx, my, pulses) {
 
   blocks.forEach((block, bi) => {
     block.chars.forEach((char) => {
+      const pos = charPos(block, char);
       const elapsed = now - (char.hitTime ?? -Infinity);
       const t = Math.min(elapsed / TEXT.HIT_ANIM_MS, 1);
       const scale = 1 + TEXT.HIT_SCALE * Math.sin(t * Math.PI);
 
-      const drawX = block.x + char.col * CHAR_W;
-      const drawY = block.y + char.dy;
-
       p.push();
-      p.translate(drawX + CHAR_W / 2, drawY);
+      p.translate(pos.x + CHAR_W / 2, pos.y);
       p.scale(scale);
       p.textStyle(t < 1 ? p.BOLD : p.NORMAL);
       p.text(char.ch, -CHAR_W / 2, 0);

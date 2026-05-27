@@ -2,7 +2,7 @@ import { CHAR_W, CIRCLES, ELEMENT_SCALE, PERFORMANCE, SHOCKWAVE, SYMBOLS, TEXT }
 import { playCharPing, playCircPing, playSymPing } from "./audio";
 import { addPulse, drawCross, drawLinePulses, drawShockwaves } from "./radar";
 import { drawAgent, updateAgent } from "./agent";
-import { processBlocks } from "./text";
+import { driftBlockChars, processBlocks } from "./text";
 
 function dissolveAlpha(age, lifetime, dissolve) {
   if (age < lifetime) return 255;
@@ -242,20 +242,11 @@ export function spawnPerformanceSymbol(p, symbols) {
 
 export function driftBlocks(ctx, features) {
   if (!features.drift) return;
-  ctx.blocks.forEach((block) => {
-    if (block.vx == null) {
-      block.vx = (Math.random() - 0.5) * PERFORMANCE.DRIFT.TEXT_SPEED;
-      block.vy = (Math.random() - 0.5) * PERFORMANCE.DRIFT.TEXT_SPEED;
-    }
-    block.x += block.vx;
-    block.y += block.vy;
-    const { p } = ctx;
-    const margin = TEXT.MARGIN;
-    if (block.x < margin) { block.x = margin; block.vx *= -1; }
-    if (block.x > p.width - margin - 80) { block.x = p.width - margin - 80; block.vx *= -1; }
-    if (block.y < margin) { block.y = margin; block.vy *= -1; }
-    if (block.y > p.height - margin) { block.y = p.height - margin; block.vy *= -1; }
-  });
+  const speed = PERFORMANCE.DRIFT.TEXT_SPEED;
+  driftBlockChars(ctx.p, ctx.blocks, ctx.activeBlock, speed);
+  if (ctx.dissolveBlocks?.length) {
+    driftBlockChars(ctx.p, ctx.dissolveBlocks, null, speed);
+  }
 }
 
 export function drawPerformanceCaption(p, ctx, features, now) {
@@ -313,15 +304,16 @@ function drawSceneTitle(p, ctx, now) {
   p.textAlign(p.CENTER, p.CENTER);
 
   const tw = Math.max(p.textWidth(ctx.sceneTitleText), 80);
-  const padX = 24 * ELEMENT_SCALE;
-  const padY = 18 * ELEMENT_SCALE;
+  const padX = 12 * ELEMENT_SCALE;
+  const padY = 7 * ELEMENT_SCALE;
   const ew = tw + padX * 2;
   const eh = titleSize + padY * 2;
+  const cornerR = eh / 2;
 
   p.fill(255, alpha);
   p.stroke(0, alpha);
   p.strokeWeight(1);
-  p.rect(ctx.smoothX - ew / 2, ctx.smoothY - eh / 2, ew, eh, 20 * ELEMENT_SCALE);
+  p.rect(ctx.smoothX - ew / 2, ctx.smoothY - eh / 2, ew, eh, cornerR);
 
   p.fill(0, alpha);
   p.noStroke();

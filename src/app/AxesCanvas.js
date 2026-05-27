@@ -6,7 +6,6 @@ import {
   drawPerformance,
   keyPressedPerformance,
   mouseClickedPerformance,
-  resetPerformance,
   setupPerformance,
 } from "./scenes/performance";
 

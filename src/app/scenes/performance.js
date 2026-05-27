@@ -8,7 +8,7 @@ import {
   updatePerformanceCircles,
   updatePerformanceSymbols,
 } from "../lib/performanceRender";
-import { makeChar, updateBlockCollisions, processDissolvingBlocks, processBlocks } from "../lib/text";
+import { makeChar, updateBlockCollisions, processDissolvingBlocks, processBlocks, scheduleBlockCharFade } from "../lib/text";
 import { appendTypedChar, handleBackspace } from "../lib/typing";
 import { queueWriteBack, tickWriteBack } from "../lib/writeback";
 import { tickScriptedText } from "../lib/scripted";
@@ -33,30 +33,6 @@ function spawnIntroText(ctx) {
       chars: word.split("").map((ch, i) => makeChar(p, ch, i)),
     });
   });
-}
-
-export function resetPerformance(ctx) {
-  const { p } = ctx;
-  ctx.lastSymbolTime = -Infinity;
-  ctx.lastAutoShock = 0;
-  ctx.captionText = "";
-  ctx.captionShownAt = 0;
-  ctx.writeBackQueue = [];
-  ctx.scriptedSpawned = new Set();
-  ctx.arcModeStart = performance.now();
-  ctx.blocks = [];
-  ctx.dissolveBlocks = [];
-  ctx.symbols = [];
-  ctx.activeBlock = null;
-  ctx.mode = "default";
-  ctx.linePulses = [];
-  ctx.shockwaves = [];
-  ctx.angle = 0;
-  ctx.spinning = false;
-  ctx.spinSpeed = 0;
-  ctx.circles = Array.from({ length: CIRCLES.COUNT }, () => makeCircle(p));
-  ctx.agents = [];
-  if ((ctx.arcMode ?? 0) === 0) spawnIntroText(ctx);
 }
 
 export function setupPerformance(ctx) {
@@ -145,33 +121,31 @@ ctx.smoothX = p.lerp(ctx.smoothX, p.mouseX, UI.MOUSE_LERP);
   updatePerformanceSymbols(p, ctx, ctx.angle, ctx.smoothX, ctx.smoothY, features, now);
   driftBlocks(ctx, features);
 
-  if (features.scanner && ctx.blocks.length > 0) {
-    updateBlockCollisions(p, ctx.blocks, ctx.angle, ctx.smoothX, ctx.smoothY, ctx.linePulses);
-  }
+  tickScriptedText(ctx, now);
+  tickWriteBack(ctx, now, features);
 
   if (ctx.dissolveBlocks?.length) {
+    if (features.scanner) {
+      updateBlockCollisions(p, ctx.dissolveBlocks, ctx.angle, ctx.smoothX, ctx.smoothY, ctx.linePulses);
+    }
     processDissolvingBlocks(p, ctx.dissolveBlocks, null, now);
   }
 
   if (features.autoFade) {
+    if (features.scanner && ctx.blocks.length > 0) {
+      updateBlockCollisions(p, ctx.blocks, ctx.angle, ctx.smoothX, ctx.smoothY, ctx.linePulses);
+    }
     processDissolvingBlocks(p, ctx.blocks, ctx.activeBlock, now);
   } else if (features.typing && ctx.blocks.length > 0) {
     processBlocks(p, ctx.blocks, ctx.activeBlock, ctx.angle, ctx.smoothX, ctx.smoothY, ctx.linePulses);
   }
 
-  tickScriptedText(ctx, now);
-  tickWriteBack(ctx, now, features);
   drawPerformanceFrame(ctx, now, features);
 }
 
 export function keyPressedPerformance(ctx, p) {
   const now = performance.now();
   const features = getFeatures(ctx.arcMode ?? 1);
-
-  if (p.key === "r" || p.key === "R") {
-    resetPerformance(ctx);
-    return true;
-  }
 
   if (p.keyCode === 16 && features.shockwave) {
     ctx.shockwaves.push({ id: ctx.nextShockwaveId++, birthTime: now });
@@ -189,8 +163,7 @@ export function keyPressedPerformance(ctx, p) {
     if (ctx.mode === "typing") {
       const block = ctx.activeBlock;
       if (block) {
-        const stamp = performance.now();
-        block.chars.forEach((char) => { char.placedTime = stamp; });
+        scheduleBlockCharFade(block, performance.now());
         if (features.writeBack && !block.isReply) {
           queueWriteBack(ctx, block);
         }

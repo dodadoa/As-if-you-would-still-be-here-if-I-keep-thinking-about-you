@@ -19,13 +19,22 @@ function getChain() {
 }
 
 let charSynth = null;
+let charDryGain = null;
+let charWetGain = null;
+let charReverb = null;
+
 function getCharSynth() {
   if (!charSynth) {
+    charReverb = new Tone.Reverb({ decay: 8, wet: 1 }).toDestination();
+    charDryGain = new Tone.Gain(1).toDestination();
+    charWetGain = new Tone.Gain(0.2).connect(charReverb);
     charSynth = new Tone.Synth({
       oscillator: { type: "sine" },
-      envelope: { attack: 0.001, decay: 0.12, sustain: 0, release: 0.05 },
+      envelope: { attack: 0.001, decay: 0.14, sustain: 0, release: 0.08 },
       volume: -10,
-    }).connect(getChain());
+    });
+    charSynth.connect(charDryGain);
+    charSynth.connect(charWetGain);
   }
   return charSynth;
 }
@@ -83,8 +92,13 @@ function yToNote(y, height, lo, hi) {
   return AUDIO.B_MAJOR[Math.max(lo, Math.min(hi, idx))];
 }
 
-export function playCharPing(y, height) {
-  try { getCharSynth().triggerAttackRelease(yToNote(y, height, 14, 21), "32n"); } catch (_) {}
+export function playCharPing(y, height, opacity = 1) {
+  getCharSynth();
+  const o = Math.max(0.06, Math.min(1, opacity));
+  charDryGain.gain.value = o;
+  charWetGain.gain.value = 0.12 + (1 - o) * 0.88;
+  charSynth.volume.value = -10 - (1 - o) * 26;
+  try { charSynth.triggerAttackRelease(yToNote(y, height, 14, 21), "32n"); } catch (_) {}
 }
 
 export function playCircPing(y, height) {
