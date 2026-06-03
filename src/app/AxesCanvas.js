@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Tone } from "./lib/audio";
+import { ensureAudioStarted, stopAmbientDrone } from "./lib/audio";
 import {
   drawPerformance,
   keyPressedPerformance,
@@ -69,12 +69,12 @@ export default function AxesCanvas() {
         };
 
         p.mouseClicked = () => {
-          Tone.start();
+          ensureAudioStarted();
           mouseClickedPerformance(ctx);
         };
 
         p.keyPressed = () => {
-          Tone.start();
+          ensureAudioStarted();
 
           if (p.key >= "0" && p.key <= "4") {
             ctx.pendingArcMode = parseInt(p.key, 10);
@@ -88,6 +88,7 @@ export default function AxesCanvas() {
     });
 
     return () => {
+      stopAmbientDrone();
       if (sketch) sketch.remove();
     };
   }, []);

@@ -12,6 +12,7 @@ import { makeChar, updateBlockCollisions, processDissolvingBlocks, processBlocks
 import { appendTypedChar, handleBackspace } from "../lib/typing";
 import { queueWriteBack, tickWriteBack } from "../lib/writeback";
 import { tickScriptedText } from "../lib/scripted";
+import { updateDroneFromCursor } from "../lib/audio";
 
 const INTRO_PHRASE = "As if you would still be here, if I keep thinking about you";
 
@@ -66,6 +67,7 @@ export function drawPerformance(ctx, now) {
 
 ctx.smoothX = p.lerp(ctx.smoothX, p.mouseX, UI.MOUSE_LERP);
   ctx.smoothY = p.lerp(ctx.smoothY, p.mouseY, UI.MOUSE_LERP);
+  updateDroneFromCursor(ctx.smoothX, ctx.smoothY, p.width, p.height);
 
   if (ctx.pendingArcMode != null) {
     const prevArcMode = ctx.arcMode;
@@ -149,6 +151,11 @@ export function keyPressedPerformance(ctx, p) {
 
   if (p.keyCode === 16 && features.shockwave) {
     ctx.shockwaves.push({ id: ctx.nextShockwaveId++, birthTime: now });
+    return true;
+  }
+
+  if ((p.key === "k" || p.key === "K") && ctx.mode !== "typing") {
+    spawnIntroText(ctx);
     return true;
   }
 

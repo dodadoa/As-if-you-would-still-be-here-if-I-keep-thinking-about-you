@@ -5,11 +5,9 @@ const RESPONSES = [
   "i am trying to hear you",
   "something like that, yes",
   "the scanner crosses and i remember",
-  "words fold into a chord",
   "was it you who moved the field",
   "i write back because you stayed",
   "not quite understanding — still listening",
-  "the circle widens when you shift",
   "tell me again, slower",
   "i hold it the way sound holds silence",
 ];

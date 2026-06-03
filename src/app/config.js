@@ -72,19 +72,6 @@ export const PERFORMANCE = {
     TEXT_SPEED: 0.15,
   },
 
-  /**
-   * Scripted timeline for arc 1 (0–1 progress through the arc). Not consumed by code yet;
-   * use as a reference or for a future auto-conductor. Beat flags mirror PRESETS fields.
-   */
-  ARC1_BEATS: [
-    { at: 0, caption: "things there", circles: true, scanner: true },
-    { at: 0.15, caption: "the circle", circles: true, scanner: true },
-    { at: 0.3, caption: "the moving scanner", circles: true, scanner: true, spin: true },
-    { at: 0.45, caption: "symbols", circles: true, scanner: true, spin: true, symbols: true },
-    { at: 0.6, caption: "words become chords", circles: true, scanner: true, spin: true, symbols: true, agent: true, typing: true },
-    { at: 0.8, caption: "shift — the field widens", circles: true, scanner: true, spin: true, symbols: true, agent: true, typing: true, shockwave: true },
-  ],
-
   /** Human-readable arc names; mirrors PRESETS captions for modes 1–4. Reference only for now. */
   ARC_TITLES: [
     "things there",
@@ -158,7 +145,7 @@ export const SYMBOLS = {
   FONT_SIZE: 20 * ELEMENT_SCALE,
   CHARS: "!@#$%^&*+=?~<>|\\§¶•◆★☆▲△▽▼◇○●□■",
   HIT_ANIM_MS: 1200,
-  FADE_IN_MS: 800,
+  FADE_IN_MS: 1500,
 };
 
 // ─── Agent blob (press i in modes 2–4) ───────────────────────────────────────
@@ -224,6 +211,43 @@ export const AUDIO = {
   ],
   REVERB: { decay: 5, wet: 0.55 },
   PRE_DELAY: { delayTime: "16n", feedback: 0.1, wet: 0.2 },
+  /** PolySynth voice pool for agent chords (one chord ≈ up to 7 notes). */
+  CHORD_POLYPHONY: 10,
+  /** Sustained drone voices (match CHORD_TONE_INDICES length + headroom). */
+  DRONE_POLYPHONY: 8,
+  /** Min ms between scanner hit sounds (circles/symbols/chars share one gate). */
+  PING_MIN_INTERVAL_MS: 50,
+
+  /**
+   * Sustained ambient bed (starts on first click/key with Tone.start).
+   * Notes are indices into CHORD_TONES (B-major harmony used elsewhere).
+   */
+  DRONE: {
+    /** B3 F#4 B4 D#4 — one octave above the old B2-based chord. */
+    CHORD_TONE_INDICES: [4, 6, 8, 5],
+    /** Extra transpose on top of chord + cursor (cents; 1200 = one octave). */
+    BASE_DETUNE_CENTS: 200,
+    VOLUME_DB: -16,
+    GAIN: 1.35,
+    ATTACK_S: 3,
+    RELEASE_S: 14,
+    /** Output fade when stopping (s); nodes dispose after this + reverb tail. */
+    STOP_FADE_S: 12,
+    REVERB: { decay: 14, wet: 0.72 },
+    FILTER_HZ: 680,
+    LFO_HZ: 0.04,
+    LFO_DEPTH_HZ: 220,
+    /** Seconds to glide drone pitch/filter toward cursor (same feel as MOUSE_LERP). */
+    CURSOR_GLIDE_S: 2.8,
+    /** B_MAJOR indices for vertical pitch mapping (top = hi, bottom = lo). */
+    SCALE_LO: 7,
+    SCALE_HI: 21,
+    /** Canvas-center pitch; detune is relative to this note. */
+    CENTER_INDEX: 14,
+    /** Horizontal cursor brightens/darkens the low-pass (Hz). */
+    FILTER_MIN_HZ: 480,
+    FILTER_MAX_HZ: 2400,
+  },
 };
 
 // ─── Cursor smoothing ─────────────────────────────────────────────────────────
@@ -288,6 +312,5 @@ export const SCRIPTED_TEXT = [
   { arcIndex: 4, atMs:  90000, text: "when you said" },
   { arcIndex: 4, atMs: 134000, text: "that thing about" },
   { arcIndex: 4, atMs: 184000, text: "the way time" },
-  { arcIndex: 4, atMs: 232000, text: "moves in you" },
   { arcIndex: 4, atMs: 268000, text: "i am still" },
 ];
