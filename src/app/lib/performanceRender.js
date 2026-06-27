@@ -222,9 +222,14 @@ export function updatePerformanceSymbols(p, ctx, angle, mx, my, features, now) {
     p.text(sym.ch, 0, 0);
     p.pop();
   }
+
+  const target = SYMBOLS.COUNT ?? 0;
+  while (symbols.length < target) {
+    spawnPerformanceSymbol(p, symbols, now);
+  }
 }
 
-export function spawnPerformanceSymbol(p, symbols) {
+export function spawnPerformanceSymbol(p, symbols, now = performance.now()) {
   const margin = TEXT.MARGIN;
   symbols.push({
     ch: SYMBOLS.CHARS[Math.floor(p.random(SYMBOLS.CHARS.length))],
@@ -236,7 +241,7 @@ export function spawnPerformanceSymbol(p, symbols) {
     prevD2: null,
     lastTrigger: 0,
     hitTime: -Infinity,
-    bornTime: performance.now(),
+    bornTime: now,
   });
 }
 

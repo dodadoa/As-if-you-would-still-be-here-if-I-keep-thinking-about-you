@@ -12,7 +12,12 @@ import { makeChar, updateBlockCollisions, processDissolvingBlocks, processBlocks
 import { appendTypedChar, handleBackspace } from "../lib/typing";
 import { queueWriteBack, tickWriteBack } from "../lib/writeback";
 import { tickScriptedText } from "../lib/scripted";
-import { updateDroneFromCursor } from "../lib/audio";
+import {
+  playSpinStartPing,
+  startDroneForWheel,
+  stopDroneForWheel,
+  updateDroneFromCursor,
+} from "../lib/audio";
 
 const INTRO_PHRASE = "As if you would still be here, if I keep thinking about you";
 
@@ -40,6 +45,12 @@ export function setupPerformance(ctx) {
   if (!ctx.circles?.length) {
     ctx.circles = Array.from({ length: CIRCLES.COUNT }, () => makeCircle(ctx.p));
   }
+  const symTarget = SYMBOLS.COUNT ?? 0;
+  if (symTarget > 0 && !ctx.symbols?.length) {
+    const now = performance.now();
+    ctx.symbols = [];
+    for (let i = 0; i < symTarget; i++) spawnPerformanceSymbol(ctx.p, ctx.symbols, now);
+  }
   ctx.agents = ctx.agents ?? [];
   ctx.writeBackQueue = ctx.writeBackQueue ?? [];
   if ((ctx.arcMode ?? 0) === 0 && ctx.blocks.length === 0) spawnIntroText(ctx);
@@ -55,9 +66,20 @@ export function drawPerformance(ctx, now) {
   const features = getFeatures(ctx.arcMode ?? 1);
 
   if (features.spin) {
-    if (ctx.spinning) ctx.spinSpeed = Math.min(ctx.spinSpeed + RADAR.ACCEL, RADAR.TARGET_SPEED);
-    else ctx.spinSpeed = Math.max(ctx.spinSpeed - RADAR.DECEL, 0);
-    ctx.angle += ctx.spinSpeed;
+    const restSpeed = RADAR.SPIN_REST_SPEED ?? 0.000001;
+    if (ctx.spinning) {
+      ctx.spinAtRest = false;
+      ctx.spinSpeed = Math.min(ctx.spinSpeed + RADAR.ACCEL, RADAR.TARGET_SPEED);
+      ctx.angle += ctx.spinSpeed;
+    } else {
+      ctx.spinSpeed = Math.max(ctx.spinSpeed - RADAR.DECEL, 0);
+      if (ctx.spinSpeed > 0) ctx.angle += ctx.spinSpeed;
+      if (ctx.spinSpeed <= restSpeed && !ctx.spinAtRest) {
+        ctx.spinAtRest = true;
+        stopDroneForWheel();
+        void playSpinStartPing(ctx.smoothY, p.height);
+      }
+    }
   }
 
   if (features.symbols && now - ctx.lastSymbolTime > SYMBOLS.SYMBOL_INTERVAL_PERFORMANCE_MS) {
@@ -203,6 +225,18 @@ export function keyPressedPerformance(ctx, p) {
   return true;
 }
 
-export function mouseClickedPerformance(ctx) {
-  ctx.spinning = !ctx.spinning;
+export async function mouseClickedPerformance(ctx) {
+  const features = getFeatures(ctx.arcMode ?? 0);
+  const turningOn = !ctx.spinning;
+  ctx.spinning = turningOn;
+
+  if (turningOn && features.spin) {
+    const startSpeed = RADAR.SPIN_START_SPEED ?? RADAR.TARGET_SPEED;
+    ctx.spinSpeed = Math.max(ctx.spinSpeed, startSpeed);
+    ctx.spinAtRest = false;
+    await startDroneForWheel();
+    void playSpinStartPing(ctx.smoothY, ctx.p.height);
+  } else if (!turningOn) {
+    stopDroneForWheel();
+  }
 }

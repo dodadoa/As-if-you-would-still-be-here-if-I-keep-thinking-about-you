@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ensureAudioStarted, stopAmbientDrone } from "./lib/audio";
+import { ensureAudioContext, playKSynth, stopAmbientDrone } from "./lib/audio";
 import {
   drawPerformance,
   keyPressedPerformance,
@@ -20,6 +20,7 @@ function createSketchState(p) {
     angle: 0,
     spinning: false,
     spinSpeed: 0,
+    spinAtRest: true,
     blocks: [],
     activeBlock: null,
     circles: [],
@@ -46,6 +47,13 @@ export default function AxesCanvas() {
   const containerRef = useRef(null);
 
   useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === "k" || e.key === "K") {
+        void playKSynth();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+
     let sketch;
 
     import("p5").then(({ default: P5 }) => {
@@ -68,13 +76,13 @@ export default function AxesCanvas() {
           drawPerformance(ctx, performance.now());
         };
 
-        p.mouseClicked = () => {
-          ensureAudioStarted();
-          mouseClickedPerformance(ctx);
+        p.mouseClicked = async () => {
+          await ensureAudioContext();
+          await mouseClickedPerformance(ctx);
         };
 
-        p.keyPressed = () => {
-          ensureAudioStarted();
+        p.keyPressed = async () => {
+          await ensureAudioContext();
 
           if (p.key >= "0" && p.key <= "4") {
             ctx.pendingArcMode = parseInt(p.key, 10);
@@ -88,6 +96,7 @@ export default function AxesCanvas() {
     });
 
     return () => {
+      window.removeEventListener("keydown", onKeyDown);
       stopAmbientDrone();
       if (sketch) sketch.remove();
     };

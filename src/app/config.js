@@ -12,7 +12,7 @@
 // ─── Global scale ───────────────────────────────────────────────────────────
 
 /** Multiplier for circles, text, symbols, and agent size. 0 = invisible, 1 = default, 2 = double. */
-export const ELEMENT_SCALE = 1;
+export const ELEMENT_SCALE = 1.25;
 
 // ─── Performance / scene timing ───────────────────────────────────────────────
 
@@ -90,6 +90,10 @@ export const RADAR = {
   ACCEL: 0.00006,
   /** Spin-down per frame when not spinning. */
   DECEL: 0.00006,
+  /** Rad/frame the moment spin turns on (no slow ramp from zero). */
+  SPIN_START_SPEED: 0.0012,
+  /** Below this rad/frame the wheel is considered stopped (“at start”). */
+  SPIN_REST_SPEED: 0.000001,
   /** How fast hit “pulses” travel along scanner axes (px/s). */
   PULSE_SPEED: 200,
   /** How long a pulse line stays visible (ms). */
@@ -120,7 +124,7 @@ export const CHAR_W = TEXT.FONT_SIZE * 0.52;
 
 export const CIRCLES = {
   /** Number of circles on screen in performance mode. */
-  COUNT: 8,
+  COUNT: 10,
   /** Hit bloom animation length (ms). */
   HIT_ANIM_MS: 1000,
 };
@@ -140,8 +144,10 @@ export const SHOCKWAVE = {
 export const SYMBOLS = {
   /** Reserved for non-performance scenes; performance uses SYMBOL_INTERVAL_PERFORMANCE_MS. */
   INTERVAL_MS: 5000,
-  /** How often a new symbol spawns during performance (ms). */
-  SYMBOL_INTERVAL_PERFORMANCE_MS: 3800,
+  /** Target symbol count on screen (replenished like circles). */
+  COUNT: 7,
+  /** How often an extra symbol spawns during performance (ms). */
+  SYMBOL_INTERVAL_PERFORMANCE_MS: 2800,
   FONT_SIZE: 20 * ELEMENT_SCALE,
   CHARS: "!@#$%^&*+=?~<>|\\§¶•◆★☆▲△▽▼◇○●□■",
   HIT_ANIM_MS: 1200,
@@ -193,6 +199,15 @@ export const SCENE1 = {
   CHAR_FADE_STAGGER_MS: 320,
 };
 
+// ─── Key / mode (shared by drone, pings, chords) ─────────────────────────────
+
+export const MUSIC = {
+  KEY: "B",
+  MODE: "major",
+  /** Pitch ladder for cursor mapping and quantization (ionian on B). */
+  SCALE: null, // filled below after AUDIO.B_MAJOR exists
+};
+
 // ─── Tone.js audio ────────────────────────────────────────────────────────────
 
 export const AUDIO = {
@@ -217,38 +232,100 @@ export const AUDIO = {
   DRONE_POLYPHONY: 8,
   /** Min ms between scanner hit sounds (circles/symbols/chars share one gate). */
   PING_MIN_INTERVAL_MS: 50,
+  /** k key — one-shot poly chord (separate from the wheel drone). */
+  K_SYNTH: {
+    VOLUME_DB: -6,
+    POLYPHONY: 8,
+    DURATION: "2n",
+    OSC: "triangle",
+    ATTACK_S: 0.005,
+    DECAY_S: 0.5,
+    SUSTAIN: 0.15,
+    RELEASE_S: 1.4,
+  },
 
   /**
-   * Sustained ambient bed (starts on first click/key with Tone.start).
+   * Sustained ambient bed (starts when scanner wheel spins; stops when it rests).
    * Notes are indices into CHORD_TONES (B-major harmony used elsewhere).
    */
   DRONE: {
-    /** B3 F#4 B4 D#4 — one octave above the old B2-based chord. */
+    /** Legacy indices into CHORD_TONES; prefer SCALE_CHORD_INDICES. */
     CHORD_TONE_INDICES: [4, 6, 8, 5],
-    /** Extra transpose on top of chord + cursor (cents; 1200 = one octave). */
-    BASE_DETUNE_CENTS: 200,
-    VOLUME_DB: -16,
-    GAIN: 1.35,
-    ATTACK_S: 3,
-    RELEASE_S: 14,
+    /** B2 D#3 F#3 E3 — low register default. */
+    SCALE_CHORD_INDICES: [0, 2, 4, 3],
+    /**
+     * Drone voicing per arc mode (0–4), each list is scale indices in MUSIC.SCALE.
+     * Stays in B major; later modes lean on upper partials.
+     */
+    CHORD_BY_ARC_MODE: [
+      [0, 2, 4, 3],
+      [0, 2, 4, 3],
+      [2, 4, 6, 5],
+      [3, 5, 7, 6],
+      [5, 7, 9, 8],
+    ],
+    /**
+     * Chord shapes swept by cursor X (scale indices). Y shifts root upward.
+     * Left = open/low (B2 area), right = mid register (B3–B4).
+     */
+    CHORD_VOICINGS: [
+      [0, 2, 4, 3],
+      [0, 2, 5, 4],
+      [2, 4, 6, 5],
+      [3, 5, 7, 6],
+      [4, 6, 9, 7],
+      [5, 7, 10, 9],
+      [7, 9, 11, 10],
+    ],
+    /** Max scale steps to raise chord root from bottom→top of screen. */
+    CHORD_ROOT_SHIFT_MAX: 4,
+    /** How fast cursor X blends between voicing slots (seconds). */
+    CHORD_GLIDE_S: 0.1,
+    /** Crossfade when chord shape changes (seconds). */
+    CHORD_CROSSFADE_S: 0.06,
+    BASE_DETUNE_CENTS: 0,
+    VOLUME_DB: -10,
+    DRY_GAIN: 0.28,
+    WET_GAIN: 0.1,
+    ATTACK_S: 0.12,
+    RELEASE_S: 4,
     /** Output fade when stopping (s); nodes dispose after this + reverb tail. */
-    STOP_FADE_S: 12,
-    REVERB: { decay: 14, wet: 0.72 },
-    FILTER_HZ: 680,
-    LFO_HZ: 0.04,
-    LFO_DEPTH_HZ: 220,
-    /** Seconds to glide drone pitch/filter toward cursor (same feel as MOUSE_LERP). */
-    CURSOR_GLIDE_S: 2.8,
+    STOP_FADE_S: 3,
+    REVERB: { decay: 8, wet: 1 },
+    FILTER_HZ: 900,
+    LFO_HZ: 0,
+    LFO_DEPTH_HZ: 0,
+    /**
+     * Pitch follow time constant (s). ~0.055 ≈ UI.MOUSE_LERP at 60fps — feels immediate.
+     * @deprecated use PITCH_GLIDE_S
+     */
+    CURSOR_GLIDE_S: 0.055,
+    /** Vertical pitch follow (seconds). Lower = snappier. */
+    PITCH_GLIDE_S: 0.055,
+    /** Filter brightness follow (seconds). */
+    FILTER_GLIDE_S: 0.055,
+    /** Short ramp on detune param to avoid clicks (seconds). */
+    DETUNE_RAMP_S: 0.012,
+    /** Legacy pitch sweep (0 = harmony from CHORD_VOICINGS only). */
+    PITCH_RANGE: 0,
+    /** Fraction of filter sweep (0–1); 1 = full min→max range. */
+    FILTER_RANGE: 1,
+    /** Filter resonance: dull (bottom) → ringing (top). */
+    FILTER_Q_MIN: 0.5,
+    FILTER_Q_MAX: 7,
     /** B_MAJOR indices for vertical pitch mapping (top = hi, bottom = lo). */
-    SCALE_LO: 7,
+    SCALE_LO: 0,
     SCALE_HI: 21,
     /** Canvas-center pitch; detune is relative to this note. */
     CENTER_INDEX: 14,
-    /** Horizontal cursor brightens/darkens the low-pass (Hz). */
-    FILTER_MIN_HZ: 480,
-    FILTER_MAX_HZ: 2400,
+    /** Filter at left of screen (dark/muffled). */
+    FILTER_MIN_HZ: 180,
+    /** Filter at right of screen (bright/open). */
+    FILTER_MAX_HZ: 2800,
   },
 };
+
+MUSIC.SCALE = AUDIO.B_MAJOR;
 
 // ─── Cursor smoothing ─────────────────────────────────────────────────────────
 
